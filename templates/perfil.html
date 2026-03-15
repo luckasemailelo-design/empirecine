@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Meu Perfil{% endblock %}
+{% block content %}
+<div class="profile-page">
+    <div class="profile-header">
+        <div class="profile-avatar-container">
+            <img src="{% if usuario.profile_pic %}{{ url_for('static', filename=usuario.profile_pic) }}{% else %}https://via.placeholder.com/150?text=User{% endif %}" alt="Avatar" class="profile-avatar-large" id="profile-avatar">
+            <form method="POST" enctype="multipart/form-data" class="avatar-upload-form">
+                <label for="profile-pic-input" class="btn btn-outline btn-small">
+                    <i class="fas fa-camera"></i> Alterar
+                </label>
+                <input type="file" id="profile-pic-input" name="profile_pic" accept="image/*" style="display: none;" onchange="this.form.submit()">
+            </form>
+        </div>
+        <div class="profile-info">
+            <h1>{{ usuario.nome }}</h1>
+            <p class="profile-email">{{ usuario.email }}</p>
+            {% if usuario.expira_em %}
+                <p class="profile-expira {% if usuario.expira_em < now() %}expirado{% endif %}">
+                    <i class="fas fa-clock"></i> Expira em: {{ usuario.expira_em.strftime('%d/%m/%Y') }}
+                    {% if usuario.expira_em < now() %}<span class="badge-expirado">(Expirada)</span>{% endif %}
+                </p>
+            {% else %}
+                <p class="profile-expira"><i class="fas fa-infinity"></i> Conta sem expiração</p>
+            {% endif %}
+            <p class="profile-stats"><i class="fas fa-clock"></i> Horas assistidas: {{ horas_assistidas }}h</p>
+        </div>
+    </div>
+
+    <div class="profile-favorites">
+        <h2 class="section-title">Meus Filmes Favoritos</h2>
+        {% if favoritos_filmes %}
+            <div class="horizontal-scroll" id="favoritos-filmes">
+                {% for filme in favoritos_filmes %}
+                    <div class="card" onclick="window.location.href='/play/{{ filme.id }}'">
+                        <img src="{{ filme.logo or url_for('static', filename='images/placeholder.png') }}" alt="{{ filme.nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
+                        <div class="card-title-fixed">{{ filme.nome }}</div>
+                        <div class="card-body">
+                            <a href="/play/{{ filme.id }}" class="btn-small" onclick="event.stopPropagation();">Assistir</a>
+                            <button class="favorito-btn" data-id="{{ filme.id }}" onclick="event.stopPropagation();"><i class="fas fa-heart"></i></button>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="empty-message">Nenhum filme favoritado.</p>
+        {% endif %}
+
+        <h2 class="section-title">Minhas Séries Favoritas</h2>
+        {% if favoritos_series %}
+            <div class="horizontal-scroll" id="favoritos-series">
+                {% for serie in favoritos_series %}
+                    <div class="card" onclick="window.location.href='/serie/{{ serie.serie_nome | urlencode }}'">
+                        <img src="{{ serie.logo or url_for('static', filename='images/placeholder.png') }}" alt="{{ serie.serie_nome }}" onerror="this.src='{{ url_for('static', filename='images/placeholder.png') }}'">
+                        <div class="card-title-fixed">{{ serie.serie_nome }}</div>
+                        <div class="card-body">
+                            <a href="/serie/{{ serie.serie_nome | urlencode }}" class="btn-small" onclick="event.stopPropagation();">Ver detalhes</a>
+                            <button class="favorito-btn" data-id="{{ serie.id }}" onclick="event.stopPropagation();"><i class="fas fa-heart"></i></button>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="empty-message">Nenhuma série favoritada.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Atualiza as setas de rolagem horizontal após carregar os cards
+    if (typeof adicionarSetasScroll === 'function') {
+        setTimeout(() => {
+            document.querySelectorAll('.horizontal-scroll').forEach(container => {
+                adicionarSetasScroll(container);
+            });
+        }, 100);
+    }
+    // Recarrega estado dos favoritos (para marcar os botões ativos)
+    if (typeof carregarEstadoFavoritos === 'function') {
+        carregarEstadoFavoritos();
+    }
+</script>
+{% endblock %}

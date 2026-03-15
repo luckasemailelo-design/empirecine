@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Minha Lista{% endblock %}
+{% block content %}
+<h1 class="section-title">Minha Lista</h1>
+<div class="category-grid" id="favoritos-grid"></div>
+{% endblock %}
+{% block scripts %}
+<script>
+    fetch('/api/favoritos')
+        .then(res => res.json())
+        .then(data => {
+            const grid = document.getElementById('favoritos-grid');
+            grid.innerHTML = '';
+            data.forEach(item => grid.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+            carregarEstadoFavoritos();
+        });
+</script>
+{% endblock %}

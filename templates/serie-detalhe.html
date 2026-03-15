@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}{{ serie_nome }}{% endblock %}
+{% block content %}
+<div class="serie-detail">
+    <div class="detail-container">
+        <div class="poster">
+            <img src="{{ poster_serie or url_for('static', filename='images/placeholder.png') }}" alt="{{ serie_nome }}">
+        </div>
+        <div class="info">
+            <h1>{{ serie_nome }}</h1>
+            <p class="sinopse">{{ sinopse_geral }}</p>
+            <!-- Botão de favorito da série -->
+            {% set primeiro_episodio = temporadas.values()|first|first %}
+            <button id="favorito-serie-btn" class="favorito-btn-large" data-id="{{ primeiro_episodio.id }}">
+                <i class="fas fa-heart"></i> Favoritar Série
+            </button>
+        </div>
+    </div>
+
+    <div class="temporadas-container">
+        {% for temp, epis in temporadas.items() %}
+        <div class="temporada-card">
+            <div class="temporada-header" onclick="toggleEpisodios(this)">
+                <h2>Temporada {{ temp }}</h2>
+                <i class="fas fa-chevron-down"></i>
+            </div>
+            <div class="episodios-list" style="display: none;">
+                {% for ep in epis %}
+                <div class="episodio-item">
+                    <div class="episodio-poster">
+                        <img src="{{ ep.logo or url_for('static', filename='images/placeholder.png') }}" alt="{{ ep.nome }}">
+                    </div>
+                    <div class="episodio-info">
+                        <h3>{{ ep.episodio }} - Episódio</h3>
+                        <p class="episodio-sinopse">{{ ep.sinopse_episodio }}</p>
+                        <a href="{{ url_for('play', id=ep.id) }}" class="btn-small">Assistir</a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function toggleEpisodios(header) {
+        const list = header.nextElementSibling;
+        const icon = header.querySelector('i');
+        if (list.style.display === 'none') {
+            list.style.display = 'block';
+            icon.classList.remove('fa-chevron-down');
+            icon.classList.add('fa-chevron-up');
+        } else {
+            list.style.display = 'none';
+            icon.classList.remove('fa-chevron-up');
+            icon.classList.add('fa-chevron-down');
+        }
+    }
+
+    // Lógica para favoritar a série
+    const favoritoBtn = document.getElementById('favorito-serie-btn');
+    const serieNome = "{{ serie_nome }}";
+
+    // Verificar se a série já está nos favoritos
+    fetch('/api/favoritos')
+        .then(res => res.json())
+        .then(favoritos => {
+            const isFavorito = favoritos.some(f => f.tipo === 'serie' && f.serie_nome === serieNome);
+            if (isFavorito) {
+                favoritoBtn.classList.add('favorito-ativo');
+                favoritoBtn.innerHTML = '<i class="fas fa-heart"></i> Favoritado';
+            }
+        });
+
+    favoritoBtn.addEventListener('click', function() {
+        const id = this.dataset.id;
+        fetch(`/favoritar/${id}`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'adicionado') {
+                    this.classList.add('favorito-ativo');
+                    this.innerHTML = '<i class="fas fa-heart"></i> Favoritado';
+                } else {
+                    this.classList.remove('favorito-ativo');
+                    this.innerHTML = '<i class="fas fa-heart"></i> Favoritar Série';
+                }
+            });
+    });
+</script>
+{% endblock %}

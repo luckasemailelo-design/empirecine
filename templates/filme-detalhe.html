@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ filme.nome }}{% endblock %}
+{% block content %}
+<div class="movie-detail">
+    <div class="detail-container">
+        <div class="poster">
+            <img src="{{ poster_tmdb or filme.logo or url_for('static', filename='images/placeholder.png') }}" alt="{{ filme.nome }}">
+        </div>
+        <div class="info">
+            <h1>{{ filme.nome }}</h1>
+            <p class="sinopse">{{ sinopse }}</p>
+            <a href="{{ url_for('play', id=filme.id) }}" class="btn">Assistir</a>
+            <button class="favorito-btn-large" data-id="{{ filme.id }}"><i class="fas fa-heart"></i> Minha Lista</button>
+        </div>
+    </div>
+</div>
+{% endblock %}

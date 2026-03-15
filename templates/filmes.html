@@ -1,0 +1,293 @@
+{% extends "base.html" %}
+{% block title %}Filmes{% endblock %}
+{% block content %}
+<div class="page-with-sidebar">
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-header">
+            <h2>Filtros</h2>
+            <button class="sidebar-close" id="sidebar-close"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="sidebar-search">
+            <input type="text" id="search-input" class="search-input" placeholder="Buscar filmes...">
+            <button id="search-btn" class="search-btn">Buscar</button>
+        </div>
+        <div class="filter-group">
+            <div class="filter-header" onclick="toggleAnoFilter(this)">
+                <span>Ano</span>
+                <i class="fas fa-chevron-down"></i>
+            </div>
+            <div class="filter-options" id="ano-filter" style="display: none;">
+                <ul id="ano-list">
+                    <li><a href="#" data-ano="" class="ano-link active">Todos</a></li>
+                </ul>
+            </div>
+        </div>
+        <div class="sidebar-categories">
+            <h3>Categorias</h3>
+            <ul id="categorias-list">
+                <li><a href="#" data-categoria="todos" class="categoria-link active">Todos</a></li>
+            </ul>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <button class="sidebar-toggle-btn" id="sidebar-toggle-btn" style="display: none;">
+            <i class="fas fa-filter"></i> Filtrar
+        </button>
+
+        <div id="secoes-fixas">
+            <h2 class="section-title">Lançamento</h2>
+            <div class="horizontal-scroll" id="lancamento"></div>
+            <h2 class="section-title">Comédia</h2>
+            <div class="horizontal-scroll" id="comedia"></div>
+            <h2 class="section-title">Ação</h2>
+            <div class="horizontal-scroll" id="acao"></div>
+            <h2 class="section-title">Romance</h2>
+            <div class="horizontal-scroll" id="romance"></div>
+            <h2 class="section-title">Todos os filmes (A-Z)</h2>
+            <div class="category-grid" id="todos-filmes"></div>
+            <div class="load-more-container">
+                <button id="load-more-todos" class="btn btn-outline" style="display: none;">Carregar Mais</button>
+            </div>
+        </div>
+
+        <div id="categoria-content" style="display: none;">
+            <h1 class="section-title" id="categoria-titulo"></h1>
+            <div class="category-grid" id="categoria-grid"></div>
+            <div class="load-more-container">
+                <button id="load-more-categoria" class="btn btn-outline" style="display: none;">Carregar Mais</button>
+            </div>
+        </div>
+    </main>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentPage = 1;
+    let currentCategoria = 'todos';
+    let currentAno = '';
+
+    const secoesFixas = document.getElementById('secoes-fixas');
+    const categoriaContent = document.getElementById('categoria-content');
+    const categoriaTitulo = document.getElementById('categoria-titulo');
+    const categoriaGrid = document.getElementById('categoria-grid');
+    const loadMoreTodos = document.getElementById('load-more-todos');
+    const loadMoreCategoria = document.getElementById('load-more-categoria');
+    const sidebar = document.getElementById('sidebar');
+    const sidebarClose = document.getElementById('sidebar-close');
+    const sidebarToggle = document.getElementById('sidebar-toggle-btn');
+
+    function atualizarSetas() {
+        if (typeof adicionarSetasScroll === 'function') {
+            setTimeout(() => {
+                document.querySelectorAll('.horizontal-scroll').forEach(container => {
+                    adicionarSetasScroll(container);
+                });
+            }, 50);
+        }
+    }
+
+    window.toggleAnoFilter = function(header) {
+        header.classList.toggle('active');
+        const options = document.getElementById('ano-filter');
+        options.style.display = options.style.display === 'none' ? 'block' : 'none';
+    };
+
+    fetch('/api/filmes/anos')
+        .then(res => res.json())
+        .then(anos => {
+            const lista = document.getElementById('ano-list');
+            anos.forEach(ano => {
+                const li = document.createElement('li');
+                li.innerHTML = `<a href="#" data-ano="${ano}" class="ano-link">${ano}</a>`;
+                lista.appendChild(li);
+            });
+        });
+
+    fetch('/api/filmes/categorias')
+        .then(res => res.json())
+        .then(categorias => {
+            const lista = document.getElementById('categorias-list');
+            categorias.forEach(cat => {
+                const li = document.createElement('li');
+                li.innerHTML = `<a href="#" data-categoria="${cat}" class="categoria-link">${cat}</a>`;
+                lista.appendChild(li);
+            });
+        });
+
+    function carregarSecoesFixas() {
+        fetch('/api/filmes/lancamento')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('lancamento');
+                container.innerHTML = '';
+                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+                atualizarSetas();
+            });
+        fetch('/api/filmes/categoria/Comédia')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('comedia');
+                container.innerHTML = '';
+                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+                atualizarSetas();
+            });
+        fetch('/api/filmes/categoria/Thriller')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('acao');
+                container.innerHTML = '';
+                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+                atualizarSetas();
+            });
+        fetch('/api/filmes/categoria/Romance')
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('romance');
+                container.innerHTML = '';
+                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+                atualizarSetas();
+            });
+        carregarListaTodos(1);
+    }
+
+    function carregarListaTodos(pagina) {
+        let url = `/api/filmes/lista?pagina=${pagina}`;
+        if (currentAno) url += `&ano=${currentAno}`;
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('todos-filmes');
+                if (pagina === 1) container.innerHTML = '';
+                data.itens.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+                if (data.pagina < data.total_paginas) {
+                    loadMoreTodos.style.display = 'block';
+                    loadMoreTodos.dataset.page = data.pagina + 1;
+                } else {
+                    loadMoreTodos.style.display = 'none';
+                }
+            });
+    }
+
+    document.addEventListener('click', function(e) {
+        const link = e.target.closest('.categoria-link');
+        if (link) {
+            e.preventDefault();
+            document.querySelectorAll('.categoria-link').forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+            const categoria = link.dataset.categoria;
+            currentCategoria = categoria;
+            currentPage = 1;
+            if (categoria === 'todos') {
+                secoesFixas.style.display = 'block';
+                categoriaContent.style.display = 'none';
+                carregarListaTodos(1);
+            } else {
+                secoesFixas.style.display = 'none';
+                categoriaContent.style.display = 'block';
+                categoriaTitulo.textContent = `Filmes - ${categoria}`;
+                carregarCategoria(categoria, 1);
+            }
+        }
+        const anoLink = e.target.closest('.ano-link');
+        if (anoLink) {
+            e.preventDefault();
+            document.querySelectorAll('.ano-link').forEach(l => l.classList.remove('active'));
+            anoLink.classList.add('active');
+            currentAno = anoLink.dataset.ano;
+            currentPage = 1;
+            if (currentCategoria === 'todos') {
+                document.getElementById('todos-filmes').innerHTML = '';
+                carregarListaTodos(1);
+            } else {
+                categoriaGrid.innerHTML = '';
+                carregarCategoria(currentCategoria, 1);
+            }
+        }
+    });
+
+    function carregarCategoria(categoria, pagina) {
+        let url = `/api/filmes/categoria/${encodeURIComponent(categoria)}/lista?pagina=${pagina}`;
+        if (currentAno) url += `&ano=${currentAno}`;
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                if (pagina === 1) categoriaGrid.innerHTML = '';
+                data.itens.forEach(item => categoriaGrid.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                carregarEstadoFavoritos();
+                if (data.pagina < data.total_paginas) {
+                    loadMoreCategoria.style.display = 'block';
+                    loadMoreCategoria.dataset.page = data.pagina + 1;
+                } else {
+                    loadMoreCategoria.style.display = 'none';
+                }
+            });
+    }
+
+    loadMoreTodos.addEventListener('click', function() {
+        carregarListaTodos(parseInt(this.dataset.page));
+    });
+    loadMoreCategoria.addEventListener('click', function() {
+        carregarCategoria(currentCategoria, parseInt(this.dataset.page));
+    });
+
+    // Controle da sidebar no mobile (idêntico ao series.html)
+    function isMobile() { return window.innerWidth <= 768; }
+
+    function openSidebar() {
+        sidebar.classList.add('open');
+        sidebar.classList.remove('closed');
+        sidebarToggle.style.display = 'none';
+    }
+
+    function closeSidebar() {
+        sidebar.classList.remove('open');
+        sidebar.classList.add('closed');
+        if (isMobile()) {
+            sidebarToggle.style.display = 'block';
+        }
+    }
+
+    if (isMobile()) {
+        sidebar.classList.add('closed');
+        sidebar.classList.remove('open');
+        sidebarToggle.style.display = 'block';
+    } else {
+        sidebar.classList.remove('closed', 'open');
+        sidebarToggle.style.display = 'none';
+    }
+
+    sidebarToggle.addEventListener('click', openSidebar);
+    sidebarClose.addEventListener('click', closeSidebar);
+
+    document.querySelectorAll('.categoria-link, .ano-link').forEach(link => {
+        link.addEventListener('click', function() {
+            if (isMobile()) closeSidebar();
+        });
+    });
+
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 768) {
+            sidebar.classList.remove('closed', 'open');
+            sidebarToggle.style.display = 'none';
+        } else {
+            sidebar.classList.add('closed');
+            sidebar.classList.remove('open');
+            sidebarToggle.style.display = 'block';
+        }
+    });
+
+    carregarSecoesFixas();
+
+    window.setupSearch('search-input', 'search-btn', function(termo) {
+        if (termo.trim() === '') return;
+        window.location.href = `/busca?q=${encodeURIComponent(termo)}`;
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% block title %}Home{% endblock %}
+{% block content %}
+
+<!-- Seção Destaque (5 mais assistidos globalmente) -->
+<section class="hero-section">
+    <div class="hero-container" id="hero-container">
+        <!-- Será preenchido via JS -->
+    </div>
+</section>
+
+<!-- Assistido recentemente -->
+<h2 class="section-title">Assistido recentemente</h2>
+<div class="horizontal-scroll" id="recentes"></div>
+
+<!-- Filmes recomendados -->
+<h2 class="section-title">Filmes recomendados</h2>
+<div class="horizontal-scroll" id="filmes-recomendados"></div>
+
+<!-- Séries recomendadas -->
+<h2 class="section-title">Séries recomendadas</h2>
+<div class="horizontal-scroll" id="series-recomendadas"></div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // ==================== FUNÇÕES DE FAVORITO ====================
+        // Carregar estado dos favoritos (marcar botões ativos)
+        function carregarEstadoFavoritos() {
+            fetch('/api/favoritos')
+                .then(res => res.json())
+                .then(favoritos => {
+                    const favoritosIds = new Set(favoritos.map(f => f.id));
+                    document.querySelectorAll('.favorito-btn').forEach(btn => {
+                        const id = parseInt(btn.dataset.id);
+                        if (favoritosIds.has(id)) {
+                            btn.classList.add('favorito-ativo');
+                        } else {
+                            btn.classList.remove('favorito-ativo');
+                        }
+                    });
+                })
+                .catch(err => console.error('Erro ao carregar favoritos:', err));
+        }
+
+        // Ação de favoritar (delegação de eventos)
+        document.addEventListener('click', function(e) {
+            const btn = e.target.closest('.favorito-btn');
+            if (!btn) return;
+            e.preventDefault();
+            e.stopPropagation();
+
+            const id = btn.dataset.id;
+            fetch(`/favoritar/${id}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'adicionado') {
+                        btn.classList.add('favorito-ativo');
+                    } else {
+                        btn.classList.remove('favorito-ativo');
+                    }
+                    // Opcional: recarregar estado para sincronizar outros botões
+                    carregarEstadoFavoritos();
+                })
+                .catch(err => {
+                    console.error('Erro ao favoritar:', err);
+                    alert('Falha ao favoritar. Tente novamente.');
+                });
+        });
+
+        // ==================== FUNÇÕES DE CARD ====================
+        // Função específica para os cards de "Assistido recentemente"
+        function recentesCardTemplate(item) {
+            // Para episódios (com temporada e episodio), o link é o player
+            let link;
+            if (item.temporada !== null && item.episodio !== null) {
+                link = `/play/${item.id}`;
+            } else {
+                link = `/play/${item.id}`;
+            }
+
+            let extraInfo = '';
+            if (item.temporada !== null && item.episodio !== null) {
+                extraInfo = `<span class="extra-info">T${item.temporada} E${item.episodio}</span>`;
+            } else if (item.tipo === 'serie') {
+                extraInfo = `<span class="extra-info">Série</span>`;
+            } else if (item.tipo === 'filme') {
+                extraInfo = `<span class="extra-info">Filme</span>`;
+            }
+
+            return `
+                <div class="card" onclick="window.location.href='${link}'">
+                    <img src="${item.logo || '/static/images/placeholder.png'}" alt="${item.nome}" onerror="this.src='/static/images/placeholder.png'">
+                    <div class="card-title-fixed">${item.nome}</div>
+                    <div class="card-body">
+                        <a href="${link}" class="btn-small" onclick="event.stopPropagation();">Assistir</a>
+                        <button class="favorito-btn" data-id="${item.id}" onclick="event.stopPropagation();"><i class="fas fa-heart"></i></button>
+                        ${extraInfo}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Função auxiliar para recriar setas após carregar conteúdo
+        function atualizarSetas() {
+            if (typeof adicionarSetasScroll === 'function') {
+                setTimeout(() => {
+                    document.querySelectorAll('.horizontal-scroll').forEach(container => {
+                        adicionarSetasScroll(container);
+                    });
+                }, 50);
+            }
+        }
+
+        // ==================== CARREGAR DESTAQUES ====================
+        fetch('/api/mais-assistidos')
+            .then(res => res.json())
+            .then(itens => {
+                const container = document.getElementById('hero-container');
+                if (!itens.length) {
+                    container.innerHTML = '<p class="empty-message">Nenhum destaque no momento.</p>';
+                    return;
+                }
+                let html = '';
+                itens.forEach((item, index) => {
+                    let link;
+                    if (item.temporada !== null && item.episodio !== null) {
+                        link = `/play/${item.id}`;
+                    } else if (item.tipo === 'serie') {
+                        link = `/serie/${encodeURIComponent(item.serie_nome)}`;
+                    } else {
+                        link = `/play/${item.id}`;
+                    }
+                    let titulo = '', subtitulo = '', badge = '';
+                    if (item.tipo === 'serie' && item.episodio !== null) {
+                        titulo = item.serie_nome;
+                        subtitulo = `Episódio ${item.episodio}`;
+                        badge = 'Série';
+                    } else if (item.tipo === 'serie') {
+                        titulo = item.serie_nome;
+                        subtitulo = 'Série';
+                    } else if (item.tipo === 'filme') {
+                        titulo = item.nome;
+                        subtitulo = item.categoria || 'Filme';
+                        badge = 'Filme';
+                    } else {
+                        titulo = item.nome;
+                        subtitulo = item.categoria || '';
+                    }
+                    html += `
+                        <div class="hero-item" style="background-image: url('${item.logo || '/static/images/placeholder.png'}');" data-index="${index}" >
+                            <div class="hero-content">
+                                ${badge ? `<span class="hero-badge">${badge}</span>` : ''}
+                                <h2 class="hero-title">${titulo}</h2>
+                                <p class="hero-subtitle">${subtitulo}</p>
+                                <a href="${link}" class="hero-btn">Assistir</a>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html + `
+                    <button class="hero-arrow left" id="hero-prev"><i class="fas fa-chevron-left"></i></button>
+                    <button class="hero-arrow right" id="hero-next"><i class="fas fa-chevron-right"></i></button>
+                    <div class="hero-indicators" id="hero-indicators">
+                        ${itens.map((_, i) => `<span class="hero-indicator ${i === 0 ? 'active' : ''}" data-index="${i}"></span>`).join('')}
+                    </div>
+                `;
+
+                let currentIndex = 0;
+                const items = container.querySelectorAll('.hero-item');
+                const indicators = container.querySelectorAll('.hero-indicator');
+                const total = items.length;
+                let autoPlayInterval;
+
+                function showItem(index) {
+                    items.forEach((item, i) => { item.style.display = i === index ? 'flex' : 'none'; });
+                    indicators.forEach((ind, i) => { ind.classList.toggle('active', i === index); });
+                    currentIndex = index;
+                }
+                function nextItem() { showItem((currentIndex + 1) % total); }
+                function prevItem() { showItem((currentIndex - 1 + total) % total); }
+                function resetAutoPlay() { clearInterval(autoPlayInterval); autoPlayInterval = setInterval(nextItem, 10000); }
+
+                showItem(0);
+                resetAutoPlay();
+
+                document.getElementById('hero-prev').addEventListener('click', () => { prevItem(); resetAutoPlay(); });
+                document.getElementById('hero-next').addEventListener('click', () => { nextItem(); resetAutoPlay(); });
+                indicators.forEach(ind => {
+                    ind.addEventListener('click', (e) => { showItem(parseInt(e.target.dataset.index)); resetAutoPlay(); });
+                });
+            })
+            .catch(err => {
+                console.error('Erro ao carregar destaques:', err);
+                document.getElementById('hero-container').innerHTML = '<p class="error">Erro ao carregar destaques.</p>';
+            });
+
+        // ==================== CARREGAR RECOMENDAÇÕES E RECENTES ====================
+        fetch('/api/inicio')
+            .then(res => res.json())
+            .then(data => {
+                const filmesRec = document.getElementById('filmes-recomendados');
+                filmesRec.innerHTML = '';
+                data.filmes_recomendados.forEach(item => filmesRec.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+
+                const seriesRec = document.getElementById('series-recomendadas');
+                seriesRec.innerHTML = '';
+                data.series_recomendadas.forEach(item => seriesRec.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+
+                const recentes = document.getElementById('recentes');
+                recentes.innerHTML = '';
+                data.assistido_recentemente.forEach(item => recentes.insertAdjacentHTML('beforeend', recentesCardTemplate(item)));
+
+                // Atualiza estado dos favoritos e setas
+                carregarEstadoFavoritos();
+                atualizarSetas();
+            })
+            .catch(err => {
+                console.error('Erro ao carregar recomendações:', err);
+                document.querySelectorAll('.horizontal-scroll').forEach(el => {
+                    el.innerHTML = '<p class="error">Erro ao carregar.</p>';
+                });
+            });
+    });
+</script>
+{% endblock %}

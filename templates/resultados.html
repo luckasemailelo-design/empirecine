@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}Resultados da busca{% endblock %}
+{% block content %}
+
+<div class="search-container">
+    <input type="text" id="search-input" class="search-input" placeholder="Pesquisar..." value="{{ termo }}">
+    <button id="search-btn" class="search-btn">Pesquisar</button>
+</div>
+
+<h1 class="section-title">Resultados para "{{ termo }}"</h1>
+
+<div class="resultados-info" id="resultados-info">Carregando...</div>
+
+<h2 class="section-title">Séries encontradas</h2>
+<div class="horizontal-scroll" id="series-grid"></div>
+
+<h2 class="section-title">Filmes encontrados</h2>
+<div class="horizontal-scroll" id="filmes-grid"></div>
+
+<div class="load-more-container">
+    <button id="load-more" class="btn btn-outline" style="display: none;">Carregar Mais</button>
+</div>
+
+<style>
+/* Ajustes responsivos para o campo de busca */
+.search-container {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+
+.search-input {
+    flex: 1;
+    min-width: 200px;
+    max-width: 100%;
+    padding: 12px 16px;
+    border: 2px solid #e1e5e9;
+    border-radius: 12px;
+    font-size: 16px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+    box-sizing: border-box;
+}
+
+.search-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.search-btn {
+    padding: 12px 24px;
+    background: #e50914; /* Vermelho Netflix */
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.search-btn:hover {
+    background: #b2070f; /* Vermelho mais escuro */
+    transform: translateY(-1px);
+}
+
+.search-btn:active {
+    transform: translateY(0);
+}
+
+/* Mobile: campo ocupa toda a largura, botão na linha abaixo */
+@media (max-width: 768px) {
+    .search-container {
+        flex-direction: column;
+        gap: 12px;
+    }
+    
+    .search-input {
+        min-width: 100%;
+        font-size: 18px;
+        padding: 16px;
+    }
+    
+    .search-btn {
+        width: 100%;
+        padding: 16px;
+        font-size: 18px;
+    }
+}
+
+/* Tablets pequenos */
+@media (max-width: 480px) {
+    .search-container {
+        margin-bottom: 24px;
+        padding: 0 16px;
+    }
+}
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const termo = "{{ termo }}";
+    let currentPage = 1;
+
+    function carregarResultados(pagina) {
+        fetch(`/api/busca?q=${encodeURIComponent(termo)}&pagina=${pagina}`)
+            .then(res => res.json())
+            .then(data => {
+                const seriesGrid = document.getElementById('series-grid');
+                const filmesGrid = document.getElementById('filmes-grid');
+                const info = document.getElementById('resultados-info');
+
+                if (pagina === 1) {
+                    seriesGrid.innerHTML = '';
+                    filmesGrid.innerHTML = '';
+                }
+
+                let seriesCount = 0;
+                let filmesCount = 0;
+
+                data.itens.forEach(item => {
+                    if (item.tipo === 'serie') {
+                        seriesGrid.insertAdjacentHTML('beforeend', window.cardTemplate(item));
+                        seriesCount++;
+                    } else if (item.tipo === 'filme') {
+                        filmesGrid.insertAdjacentHTML('beforeend', window.cardTemplate(item));
+                        filmesCount++;
+                    }
+                });
+
+                if (pagina === 1) {
+                    window.totalSeries = seriesCount;
+                    window.totalFilmes = filmesCount;
+                } else {
+                    window.totalSeries += seriesCount;
+                    window.totalFilmes += filmesCount;
+                }
+
+                info.textContent = `Encontradas ${window.totalSeries} séries e ${window.totalFilmes} filmes.`;
+
+                if (typeof carregarEstadoFavoritos === 'function') {
+                    carregarEstadoFavoritos();
+                }
+                if (typeof adicionarSetasScroll === 'function') {
+                    setTimeout(() => {
+                        document.querySelectorAll('.horizontal-scroll').forEach(container => {
+                            adicionarSetasScroll(container);
+                        });
+                    }, 50);
+                }
+
+                const btn = document.getElementById('load-more');
+                if (data.pagina < data.total_paginas) {
+                    btn.style.display = 'block';
+                    btn.dataset.page = data.pagina + 1;
+                } else {
+                    btn.style.display = 'none';
+                }
+            })
+            .catch(err => {
+                console.error('Erro na busca:', err);
+                document.getElementById('resultados-info').textContent = 'Erro ao carregar resultados.';
+            });
+    }
+
+    carregarResultados(1);
+
+    document.getElementById('load-more').addEventListener('click', function() {
+        carregarResultados(parseInt(this.dataset.page));
+    });
+
+    window.setupSearch('search-input', 'search-btn', function(termo) {
+        if (termo.trim() !== '') {
+            window.location.href = `/busca?q=${encodeURIComponent(termo)}`;
+        }
+    });
+</script>
+{% endblock %}
