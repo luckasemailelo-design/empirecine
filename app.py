@@ -1039,18 +1039,18 @@ def proxy():
 
 # ---------- Criar admin padrão (apenas se não existir) ----------
 def criar_admin_padrao():
-    if Usuario.query.filter_by(email='admin@teste.com').first() is None:
-        hash_senha = generate_password_hash('admin')
+    if Usuario.query.filter_by(email='empire@empirecine.com').first() is None:
+        hash_senha = generate_password_hash('Leavemealone08.')
         admin = Usuario(
-            nome='Administrador',
-            email='admin@teste.com',
+            nome='EmpireCine',
+            email='empire@empirecine.com',
             senha=hash_senha,
             is_admin=True,
             expira_em=None
         )
         db.session.add(admin)
         db.session.commit()
-        logger.info("Usuário admin padrão criado: admin@teste.com / admin")
+        logger.info("Usuário admin padrão criado: empire@empirecine.com / Leavemealone08.")
     else:
         logger.info("Usuário admin padrão já existe.")
 
