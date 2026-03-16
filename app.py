@@ -987,6 +987,12 @@ def api_favoritos():
 
     return jsonify([c.serialize() for c in resultados])
 
+@app.route('/api/verificar-login')
+def verificar_login():
+    if 'usuario_id' in session:
+        return jsonify({'logado': True})
+    return jsonify({'logado': False})
+
 # ---------- Progresso ----------
 @app.route('/progresso/<int:canal_id>', methods=['POST'])
 def salvar_progresso(canal_id):
