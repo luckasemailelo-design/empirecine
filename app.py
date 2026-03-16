@@ -177,13 +177,13 @@ def admin_required(f):
     decorated_function.__name__ = f.__name__
     return decorated_function
 
-# ---------- Decorador para verificar se é o admin inicial (email admin@teste.com) ----------
+# ---------- Decorador para verificar se é o admin inicial (email empire@empirecine.com) ----------
 def initial_admin_required(f):
     def decorated_function(*args, **kwargs):
         if 'usuario_id' not in session:
             return redirect(url_for('login'))
         usuario = Usuario.query.get(session['usuario_id'])
-        if not usuario or not usuario.is_admin or usuario.email != 'admin@teste.com':
+        if not usuario or not usuario.is_admin or usuario.email != 'empire@empirecine.com':
             abort(403)  # Proibido
         return f(*args, **kwargs)
     decorated_function.__name__ = f.__name__
