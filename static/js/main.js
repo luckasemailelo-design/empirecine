@@ -15,9 +15,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Carregar estado dos favoritos
     carregarEstadoFavoritos();
-
-    // Opcional: verificar login ao carregar a página (pode ser comentado se não for necessário)
-    // verificarLogin();
 });
 
 // Template para cards
@@ -104,6 +101,28 @@ document.addEventListener('click', function(e) {
         });
 });
 
+// Carregar estado dos favoritos
+function carregarEstadoFavoritos() {
+    console.log('Carregando estado dos favoritos...');
+    fetch('/api/favoritos')
+        .then(res => {
+            if (!res.ok) throw new Error('Erro ao buscar favoritos');
+            return res.json();
+        })
+        .then(favoritos => {
+            console.log('Favoritos recebidos:', favoritos);
+            const favoritosIds = new Set(favoritos.map(f => f.id));
+            document.querySelectorAll('.favorito-btn, .favorito-btn-large').forEach(btn => {
+                const id = parseInt(btn.dataset.id);
+                if (favoritosIds.has(id)) {
+                    btn.classList.add('favorito-ativo');
+                } else {
+                    btn.classList.remove('favorito-ativo');
+                }
+            });
+        })
+        .catch(err => console.error('Erro ao carregar favoritos:', err));
+}
 // Função para pesquisa com Enter
 window.setupSearch = function(inputId, btnId, callback) {
     const input = document.getElementById(inputId);
@@ -138,21 +157,4 @@ function adicionarSetasScroll(container) {
     rightArrow.addEventListener('click', () => { container.scrollBy({ left: 400, behavior: 'smooth' }); });
     wrapper.appendChild(leftArrow);
     wrapper.appendChild(rightArrow);
-}
-
-// ========== FUNÇÃO DE VERIFICAÇÃO DE LOGIN ==========
-// Faz uma requisição para a API e redireciona para login se não estiver autenticado.
-// Pode ser chamada em páginas que carregam conteúdo dinamicamente para garantir que o usuário ainda está logado.
-function verificarLogin() {
-    fetch('/api/verificar-login')
-        .then(res => res.json())
-        .then(data => {
-            if (!data.logado) {
-                window.location.href = '/login';
-            }
-        })
-        .catch(() => {
-            // Em caso de erro na requisição, também redireciona por segurança
-            window.location.href = '/login';
-        });
 }
