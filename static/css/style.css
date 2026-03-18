@@ -2022,3 +2022,70 @@ main {
     background: #1a1a1a;
     border-radius: 8px;
 }
+
+/* ===== BARRA DE PESQUISA NA HOME ===== */
+.search-bar-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    margin: 20px 0;
+    padding: 0 20px;
+}
+
+.home-search-input {
+    flex: 1;
+    max-width: 500px;
+    padding: 12px 20px;
+    font-size: 16px;
+    border: 1px solid #333;
+    border-radius: 30px;
+    background-color: #1e1e1e;
+    color: #fff;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.home-search-input:focus {
+    border-color: #e50914;
+    box-shadow: 0 0 8px rgba(229, 9, 20, 0.5);
+}
+
+.home-search-input::placeholder {
+    color: #aaa;
+    font-style: italic;
+}
+
+.home-search-btn {
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+    color: #fff;
+    background-color: #e50914;
+    border: none;
+    border-radius: 30px;
+    cursor: pointer;
+    transition: background-color 0.3s, transform 0.1s;
+}
+
+.home-search-btn:hover {
+    background-color: #f40612;
+}
+
+.home-search-btn:active {
+    transform: scale(0.97);
+}
+
+@media (max-width: 480px) {
+    .search-bar-container {
+        flex-direction: column;
+        gap: 8px;
+    }
+    .home-search-input {
+        max-width: 100%;
+        width: 100%;
+    }
+    .home-search-btn {
+        width: 100%;
+    }
+}

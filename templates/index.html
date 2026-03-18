@@ -2,6 +2,12 @@
 {% block title %}Home{% endblock %}
 {% block content %}
 
+<!-- Barra de pesquisa com botão -->
+<div class="search-bar-container">
+    <input type="text" id="home-search-input" class="home-search-input" placeholder="Buscar filmes, séries...">
+    <button id="home-search-btn" class="home-search-btn">Pesquisar</button>
+</div>
+
 <!-- Seção Destaque (5 mais assistidos globalmente) -->
 <section class="hero-section">
     <div class="hero-container" id="hero-container">
@@ -26,6 +32,29 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
+        // ==================== PESQUISA ====================
+        const searchInput = document.getElementById('home-search-input');
+        const searchBtn = document.getElementById('home-search-btn');
+
+        function realizarPesquisa() {
+            const termo = searchInput.value.trim();
+            if (termo !== '') {
+                window.location.href = `/busca?q=${encodeURIComponent(termo)}`;
+            }
+        }
+
+        if (searchInput) {
+            searchInput.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    realizarPesquisa();
+                }
+            });
+        }
+
+        if (searchBtn) {
+            searchBtn.addEventListener('click', realizarPesquisa);
+        }
+
         // ==================== FUNÇÕES DE FAVORITO ====================
         // Carregar estado dos favoritos (marcar botões ativos)
         function carregarEstadoFavoritos() {
