@@ -103,7 +103,7 @@ def registrar_log_admin(acao, usuario_afetado_id=None, descricao=''):
         db.session.add(log)
         db.session.commit()
 
-# ---------- Funções auxiliares para carregar JSON (usada na importação) ----------
+# ---------- Funções auxiliares para carregar JSON ----------
 def processar_json_m3u(filepath):
     """Processa o arquivo JSON e retorna a lista de dicionários para inserção."""
     try:
@@ -150,7 +150,8 @@ def processar_json_m3u(filepath):
             'ano_lancamento': ano_lancamento,
             'tmdb_id': None,
             'sinopse_geral': None,
-            'sinopse_episodio': None
+            'sinopse_episodio': None,
+            'ativo': True
         }
         if tipo == 'serie':
             match = re.search(r'S(\d+)E(\d+)', nome, re.IGNORECASE)
@@ -165,7 +166,15 @@ def processar_json_m3u(filepath):
 
     return canais_para_inserir, None
 
-# ---------- Decorador para verificar admin ----------
+# ---------- Funções de filtro ----------
+def filtrar_adultos(query):
+    return query.filter((Canal.categoria != 'Adultos') | (Canal.categoria.is_(None)))
+
+def filtrar_visiveis(query):
+    """Filtra apenas conteúdos ativos (não ocultos)."""
+    return query.filter(Canal.ativo == True)
+
+# ---------- Decoradores ----------
 def admin_required(f):
     def decorated_function(*args, **kwargs):
         if 'usuario_id' not in session:
@@ -177,14 +186,21 @@ def admin_required(f):
     decorated_function.__name__ = f.__name__
     return decorated_function
 
-# ---------- Decorador para verificar se é o admin inicial (email empire@empirecine.com) ----------
 def initial_admin_required(f):
     def decorated_function(*args, **kwargs):
         if 'usuario_id' not in session:
-            return redirect(url_for('login'))
+            logger.warning("Tentativa de acesso sem autenticação")
+            return jsonify({'erro': 'Não autenticado'}), 401
         usuario = Usuario.query.get(session['usuario_id'])
-        if not usuario or not usuario.is_admin or usuario.email != 'empire@empirecine.com':
-            abort(403)  # Proibido
+        if not usuario:
+            logger.warning("Usuário não encontrado na sessão")
+            return jsonify({'erro': 'Usuário não encontrado'}), 401
+        if not usuario.is_admin:
+            logger.warning(f"Usuário {usuario.email} não é admin")
+            return jsonify({'erro': 'Acesso negado'}), 403
+        if usuario.email != 'empire@empirecine.com':
+            logger.warning(f"Usuário {usuario.email} não é o admin inicial")
+            return jsonify({'erro': 'Acesso negado'}), 403
         return f(*args, **kwargs)
     decorated_function.__name__ = f.__name__
     return decorated_function
@@ -290,7 +306,8 @@ def serie_detalhe(nome):
     if not episodios:
         return redirect(url_for('series'))
 
-    if any(ep.categoria == 'Adultos' for ep in episodios):
+    # Verifica se algum episódio é adulto ou inativo
+    if any(ep.categoria == 'Adultos' or not ep.ativo for ep in episodios):
         abort(404)
 
     serie_principal = episodios[0]
@@ -341,7 +358,7 @@ def filme_detalhe(id):
     if 'usuario_id' not in session:
         return redirect(url_for('login'))
     filme = Canal.query.get_or_404(id)
-    if filme.categoria == 'Adultos':
+    if filme.categoria == 'Adultos' or not filme.ativo:
         abort(404)
     if not filme.sinopse_geral:
         dados_tmdb = buscar_filme_por_titulo(filme.nome)
@@ -361,7 +378,7 @@ def play(id):
     if 'usuario_id' not in session:
         return redirect(url_for('login'))
     canal = Canal.query.get_or_404(id)
-    if canal.categoria == 'Adultos':
+    if canal.categoria == 'Adultos' or not canal.ativo:
         abort(404)
     proximo = None
     if canal.tipo == 'serie' and canal.serie_nome and canal.temporada is not None and canal.episodio is not None:
@@ -370,7 +387,8 @@ def play(id):
             Canal.serie_nome == canal.serie_nome,
             ((Canal.temporada == canal.temporada) & (Canal.episodio > canal.episodio)) |
             ((Canal.temporada == canal.temporada + 1) & (Canal.episodio == 1)),
-            Canal.categoria != 'Adultos'
+            Canal.categoria != 'Adultos',
+            Canal.ativo == True
         ).order_by(Canal.temporada, Canal.episodio).first()
     return render_template('player.html', canal=canal, proximo_episodio=proximo)
 
@@ -395,11 +413,12 @@ def perfil():
                 db.session.commit()
                 return redirect(url_for('perfil'))
 
+    # Separa favoritos por tipo com agrupamento
     favoritos_filmes = []
     favoritos_series_map = {}
 
     for fav in usuario.favoritos:
-        if fav.canal and fav.canal.categoria != 'Adultos':
+        if fav.canal and fav.canal.categoria != 'Adultos' and fav.canal.ativo:
             if fav.canal.tipo == 'filme':
                 favoritos_filmes.append(fav.canal)
             elif fav.canal.tipo == 'serie' and fav.canal.serie_nome:
@@ -436,6 +455,11 @@ def busca():
 def admin():
     erro = request.args.get('erro')
     return render_template('admin.html', erro_cadastro=erro)
+
+@app.route('/conteudos')
+@admin_required
+def conteudos():
+    return render_template('conteudos.html')
 
 @app.route('/api/admin/estatisticas')
 @admin_required
@@ -592,7 +616,6 @@ def importar_m3u():
         if erro:
             return jsonify({'erro': erro}), 400
 
-        # Limpa a tabela e insere os novos dados
         Canal.query.delete()
         db.session.bulk_insert_mappings(Canal, dados)
         db.session.commit()
@@ -603,16 +626,189 @@ def importar_m3u():
         logger.exception("Erro na importação M3U")
         return jsonify({'erro': str(e)}), 500
 
-# ---------- API (para os templates) ----------
-def filtrar_adultos(query):
-    return query.filter((Canal.categoria != 'Adultos') | (Canal.categoria.is_(None)))
+# ---------- API de gestão de conteúdos ----------
+@app.route('/api/admin/conteudos')
+@admin_required
+def api_admin_conteudos():
+    pagina = int(request.args.get('pagina', 1))
+    busca = request.args.get('busca', '').strip()
+    por_pagina = 20
+    query = Canal.query
+    if busca:
+        query = query.filter(Canal.nome.ilike(f'%{busca}%'))
+    total = query.count()
+    conteudos = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    return jsonify({
+        'itens': [{
+            'id': c.id,
+            'nome': c.nome,
+            'tipo': c.tipo,
+            'categoria': c.categoria,
+            'ativo': c.ativo,
+            'logo': c.logo,
+            'url': c.url,
+            'temporada': c.temporada,
+            'episodio': c.episodio,
+            'serie_nome': c.serie_nome,
+            'ano_lancamento': c.ano_lancamento,
+            'sinopse_geral': c.sinopse_geral,
+            'sinopse_episodio': c.sinopse_episodio
+        } for c in conteudos.items],
+        'total': total,
+        'pagina': pagina,
+        'total_paginas': conteudos.pages
+    })
 
+@app.route('/api/admin/conteudos/<int:id>')
+@admin_required
+def api_admin_conteudo(id):
+    canal = Canal.query.get_or_404(id)
+    return jsonify({
+        'id': canal.id,
+        'nome': canal.nome,
+        'tipo': canal.tipo,
+        'categoria': canal.categoria,
+        'ativo': canal.ativo,
+        'logo': canal.logo,
+        'url': canal.url,
+        'temporada': canal.temporada,
+        'episodio': canal.episodio,
+        'serie_nome': canal.serie_nome,
+        'ano_lancamento': canal.ano_lancamento,
+        'sinopse_geral': canal.sinopse_geral,
+        'sinopse_episodio': canal.sinopse_episodio
+    })
+
+@app.route('/api/admin/conteudos/<int:id>/toggle-ativo', methods=['POST'])
+@admin_required
+def admin_toggle_ativo(id):
+    canal = Canal.query.get_or_404(id)
+    canal.ativo = not canal.ativo
+    db.session.commit()
+    registrar_log_admin('toggle_ativo', usuario_afetado_id=canal.id, descricao=f'Ativo agora: {canal.ativo}')
+    return jsonify({'status': 'ok', 'ativo': canal.ativo})
+
+@app.route('/api/admin/conteudos/<int:id>', methods=['DELETE'])
+@admin_required
+def admin_delete_conteudo(id):
+    canal = Canal.query.get_or_404(id)
+    db.session.delete(canal)
+    db.session.commit()
+    registrar_log_admin('excluir_conteudo', usuario_afetado_id=id, descricao=f'Conteúdo excluído: {canal.nome}')
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/admin/conteudos/filme', methods=['POST'])
+@admin_required
+def admin_add_filme():
+    data = request.get_json()
+    if not data:
+        return jsonify({'erro': 'Dados não fornecidos'}), 400
+    nome = data.get('nome')
+    url = data.get('url')
+    if not nome or not url:
+        return jsonify({'erro': 'Nome e URL são obrigatórios'}), 400
+    canal = Canal(
+        nome=nome,
+        url=url,
+        logo=data.get('logo', ''),
+        categoria=data.get('categoria', ''),
+        tipo='filme',
+        ativo=True,
+        serie_nome=None,
+        temporada=None,
+        episodio=None,
+        ano_lancamento=data.get('ano_lancamento', ''),
+        tmdb_id=None,
+        sinopse_geral=data.get('sinopse', ''),
+        sinopse_episodio=None
+    )
+    db.session.add(canal)
+    db.session.commit()
+    registrar_log_admin('adicionar_filme', descricao=f'Filme adicionado: {nome}')
+    return jsonify({'status': 'ok', 'id': canal.id})
+
+@app.route('/api/admin/conteudos/filme/<int:id>', methods=['PUT'])
+@admin_required
+def admin_edit_filme(id):
+    canal = Canal.query.get_or_404(id)
+    if canal.tipo != 'filme':
+        return jsonify({'erro': 'Não é um filme'}), 400
+    data = request.get_json()
+    canal.nome = data.get('nome', canal.nome)
+    canal.url = data.get('url', canal.url)
+    canal.logo = data.get('logo', canal.logo)
+    canal.categoria = data.get('categoria', canal.categoria)
+    canal.ano_lancamento = data.get('ano_lancamento', canal.ano_lancamento)
+    canal.sinopse_geral = data.get('sinopse', canal.sinopse_geral)
+    db.session.commit()
+    registrar_log_admin('editar_filme', usuario_afetado_id=canal.id, descricao=f'Filme editado: {canal.nome}')
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/admin/conteudos/serie/episodio', methods=['POST'])
+@admin_required
+def admin_add_episodio():
+    data = request.get_json()
+    nome = data.get('nome')
+    serie_nome = data.get('serie_nome')
+    temporada = data.get('temporada')
+    episodio = data.get('episodio')
+    url = data.get('url')
+    if not nome or not serie_nome or not temporada or not episodio or not url:
+        return jsonify({'erro': 'Nome, nome da série, temporada, episódio e URL são obrigatórios'}), 400
+    existente = Canal.query.filter_by(serie_nome=serie_nome, temporada=temporada, episodio=episodio).first()
+    if existente:
+        return jsonify({'erro': 'Episódio já existe'}), 400
+    canal = Canal(
+        nome=nome,
+        serie_nome=serie_nome,
+        temporada=temporada,
+        episodio=episodio,
+        url=url,
+        logo=data.get('logo', ''),
+        categoria=data.get('categoria', ''),
+        tipo='serie',
+        ativo=True,
+        ano_lancamento=data.get('ano_lancamento', ''),
+        sinopse_episodio=data.get('sinopse', '')
+    )
+    db.session.add(canal)
+    db.session.commit()
+    registrar_log_admin('adicionar_episodio', descricao=f'Episódio adicionado: {nome}')
+    return jsonify({'status': 'ok', 'id': canal.id})
+
+@app.route('/api/admin/conteudos/serie/episodio/<int:id>', methods=['PUT'])
+@admin_required
+def admin_edit_episodio(id):
+    canal = Canal.query.get_or_404(id)
+    if canal.tipo != 'serie' or canal.temporada is None or canal.episodio is None:
+        return jsonify({'erro': 'Não é um episódio'}), 400
+    data = request.get_json()
+    canal.nome = data.get('nome', canal.nome)
+    canal.url = data.get('url', canal.url)
+    canal.logo = data.get('logo', canal.logo)
+    canal.categoria = data.get('categoria', canal.categoria)
+    canal.ano_lancamento = data.get('ano_lancamento', canal.ano_lancamento)
+    canal.sinopse_episodio = data.get('sinopse', canal.sinopse_episodio)
+    nova_temp = data.get('temporada')
+    novo_ep = data.get('episodio')
+    if nova_temp and novo_ep:
+        existente = Canal.query.filter_by(serie_nome=canal.serie_nome, temporada=nova_temp, episodio=novo_ep).first()
+        if existente and existente.id != canal.id:
+            return jsonify({'erro': 'Já existe um episódio com esta temporada/episódio'}), 400
+        canal.temporada = nova_temp
+        canal.episodio = novo_ep
+    db.session.commit()
+    registrar_log_admin('editar_episodio', usuario_afetado_id=canal.id, descricao=f'Episódio editado: {canal.nome}')
+    return jsonify({'status': 'ok'})
+
+# ---------- API pública ----------
 def get_random_items(tipo, limite=15, ano=None):
     from sqlalchemy.sql.expression import func
     query = Canal.query.filter_by(tipo=tipo)
     if ano:
         query = query.filter_by(ano_lancamento=ano)
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
     return query.order_by(func.random()).limit(limite).all()
 
 def get_mais_assistidos_global(limite=5):
@@ -625,6 +821,7 @@ def get_mais_assistidos_global(limite=5):
         progress_counts, Canal.id == progress_counts.c.canal_id
     )
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
 
     filmes = query.filter(Canal.tipo == 'filme').order_by(desc(progress_counts.c.total)).all()
     series_raw = query.filter(Canal.tipo == 'serie').all()
@@ -663,7 +860,8 @@ def get_recentemente_assistidos(usuario_id, limite=15):
     ).join(Canal, Progresso.canal_id == Canal.id).filter(
         Progresso.usuario_id == usuario_id,
         Canal.tipo == 'serie',
-        Canal.categoria != 'Adultos'
+        Canal.categoria != 'Adultos',
+        Canal.ativo == True
     ).subquery()
 
     series_recentes = db.session.query(Progresso).join(
@@ -675,7 +873,8 @@ def get_recentemente_assistidos(usuario_id, limite=15):
     outros = Progresso.query.join(Canal).filter(
         Progresso.usuario_id == usuario_id,
         Canal.tipo != 'serie',
-        Canal.categoria != 'Adultos'
+        Canal.categoria != 'Adultos',
+        Canal.ativo == True
     ).order_by(desc(Progresso.data_atualizacao)).all()
 
     todos = series_recentes + outros
@@ -700,6 +899,7 @@ def api_inicio():
 def api_filmes_categoria(categoria):
     query = Canal.query.filter_by(tipo='filme', categoria=categoria)
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
     filmes = query.limit(15).all()
     return jsonify([f.serialize() for f in filmes])
 
@@ -707,6 +907,7 @@ def api_filmes_categoria(categoria):
 def api_filmes_lancamento():
     query = Canal.query.filter_by(tipo='filme', ano_lancamento='2026')
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
     filmes = query.order_by(Canal.id.desc()).limit(15).all()
     return jsonify([f.serialize() for f in filmes])
 
@@ -719,6 +920,7 @@ def api_filmes_lista():
     if ano:
         query = query.filter_by(ano_lancamento=ano)
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
     filmes = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [f.serialize() for f in filmes.items],
@@ -734,6 +936,7 @@ def api_series_categoria(categoria):
     ).group_by(Canal.serie_nome).subquery()
     query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
     series = query.limit(15).all()
     return jsonify([s.serialize() for s in series])
 
@@ -748,6 +951,7 @@ def api_series_lancamento():
     ).group_by(Canal.serie_nome).subquery()
     query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
     series = query.order_by(Canal.id.desc()).limit(15).all()
     return jsonify([s.serialize() for s in series])
 
@@ -765,6 +969,7 @@ def api_series_lista():
     subquery = subquery.group_by(Canal.serie_nome).subquery()
     query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
     series = query.order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [s.serialize() for s in series.items],
@@ -778,7 +983,7 @@ def api_serie_episodios(nome):
     if 'usuario_id' not in session:
         return jsonify({'erro': 'Não autenticado'}), 401
     usuario_id = session['usuario_id']
-    episodios = Canal.query.filter_by(tipo='serie', serie_nome=nome).order_by(Canal.temporada, Canal.episodio).all()
+    episodios = Canal.query.filter_by(tipo='serie', serie_nome=nome).filter(Canal.ativo == True).order_by(Canal.temporada, Canal.episodio).all()
     resultado = []
     for ep in episodios:
         progresso = Progresso.query.filter_by(usuario_id=usuario_id, canal_id=ep.id).first()
@@ -832,6 +1037,7 @@ def api_filmes_categoria_lista(categoria):
     if ano:
         query = query.filter_by(ano_lancamento=ano)
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
     total = query.count()
     filmes = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
@@ -855,6 +1061,7 @@ def api_series_categoria_lista(categoria):
     subquery = subquery.group_by(Canal.serie_nome).subquery()
     query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
     query = filtrar_adultos(query)
+    query = filtrar_visiveis(query)
     series = query.order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
         'itens': [s.serialize() for s in series.items],
@@ -877,7 +1084,8 @@ def api_busca():
     ).filter(
         Canal.tipo == 'serie',
         Canal.nome.ilike(f'%{termo}%'),
-        Canal.categoria != 'Adultos'
+        Canal.categoria != 'Adultos',
+        Canal.ativo == True
     ).group_by(Canal.serie_nome).subquery()
 
     series = db.session.query(Canal).join(
@@ -887,7 +1095,8 @@ def api_busca():
     outros = Canal.query.filter(
         Canal.tipo.in_(['filme', 'tv', 'radio']),
         Canal.nome.ilike(f'%{termo}%'),
-        Canal.categoria != 'Adultos'
+        Canal.categoria != 'Adultos',
+        Canal.ativo == True
     ).all()
 
     resultados = series + outros
@@ -929,7 +1138,7 @@ def favoritar(canal_id):
     usuario_id = session['usuario_id']
     canal = Canal.query.get_or_404(canal_id)
 
-    if canal.categoria == 'Adultos':
+    if canal.categoria == 'Adultos' or not canal.ativo:
         return jsonify({'erro': 'Conteúdo não disponível'}), 403
 
     if canal.tipo == 'serie':
@@ -973,7 +1182,7 @@ def api_favoritos():
     series_map = {}
 
     for fav in favs:
-        if not fav.canal or fav.canal.categoria == 'Adultos':
+        if not fav.canal or fav.canal.categoria == 'Adultos' or not fav.canal.ativo:
             continue
         if fav.canal.tipo == 'filme':
             filmes.append(fav.canal)
@@ -987,19 +1196,13 @@ def api_favoritos():
 
     return jsonify([c.serialize() for c in resultados])
 
-@app.route('/api/verificar-login')
-def verificar_login():
-    if 'usuario_id' in session:
-        return jsonify({'logado': True})
-    return jsonify({'logado': False})
-
 # ---------- Progresso ----------
 @app.route('/progresso/<int:canal_id>', methods=['POST'])
 def salvar_progresso(canal_id):
     if 'usuario_id' not in session:
         return jsonify({'erro': 'Não autenticado'}), 401
     canal = Canal.query.get(canal_id)
-    if canal and canal.categoria == 'Adultos':
+    if canal and (canal.categoria == 'Adultos' or not canal.ativo):
         return jsonify({'erro': 'Conteúdo não disponível'}), 403
     data = request.get_json()
     tempo = data.get('tempo')
@@ -1043,12 +1246,12 @@ def proxy():
     except Exception as e:
         return f'Erro no proxy: {str(e)}', 500
 
-# ---------- Criar admin padrão (apenas se não existir) ----------
+# ---------- Criar admin padrão ----------
 def criar_admin_padrao():
     if Usuario.query.filter_by(email='empire@empirecine.com').first() is None:
-        hash_senha = generate_password_hash('Leavemealone08.')
+        hash_senha = generate_password_hash('admin')
         admin = Usuario(
-            nome='EmpireCine',
+            nome='Administrador',
             email='empire@empirecine.com',
             senha=hash_senha,
             is_admin=True,
@@ -1056,12 +1259,21 @@ def criar_admin_padrao():
         )
         db.session.add(admin)
         db.session.commit()
-        logger.info("Usuário admin padrão criado: empire@empirecine.com / Leavemealone08.")
+        logger.info("Usuário admin padrão criado: empire@empirecine.com / admin")
     else:
         logger.info("Usuário admin padrão já existe.")
 
 if __name__ == '__main__':
     with app.app_context():
-        criar_admin_padrao()  # Apenas cria o admin, não carrega JSON
+        # Verificar e adicionar coluna 'ativo' se necessário
+        from sqlalchemy import inspect
+        inspector = inspect(db.engine)
+        columns = [col['name'] for col in inspector.get_columns('canal')]
+        if 'ativo' not in columns:
+            db.session.execute('ALTER TABLE canal ADD COLUMN ativo BOOLEAN DEFAULT 1')
+            db.session.commit()
+            logger.info("Coluna 'ativo' adicionada à tabela canal.")
+
+        criar_admin_padrao()
         logger.info("Sistema iniciado. Admin padrão pode importar o arquivo M3U.")
     app.run(debug=True, host='0.0.0.0', port=5000)

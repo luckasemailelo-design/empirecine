@@ -10,7 +10,7 @@ class Usuario(db.Model):
     ativo = db.Column(db.Boolean, default=True)
     expira_em = db.Column(db.DateTime, nullable=True)
     ultimo_acesso = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    profile_pic = db.Column(db.String(200), nullable=True)  # caminho da foto de perfil
+    profile_pic = db.Column(db.String(200), nullable=True)
     favoritos = db.relationship('Favorito', backref='usuario', lazy=True)
     progressos = db.relationship('Progresso', backref='usuario', lazy=True)
 
@@ -27,9 +27,10 @@ class Canal(db.Model):
     episodio = db.Column(db.Integer)
     categoria = db.Column(db.String(100))
     ano_lancamento = db.Column(db.String(4))
-    tmdb_id = db.Column(db.Integer, nullable=True)          # ID da série ou filme no TMDB
-    sinopse_geral = db.Column(db.Text, nullable=True)       # Sinopse do filme ou da série
-    sinopse_episodio = db.Column(db.Text, nullable=True)    # Sinopse do episódio (se aplicável)
+    tmdb_id = db.Column(db.Integer, nullable=True)
+    sinopse_geral = db.Column(db.Text, nullable=True)
+    sinopse_episodio = db.Column(db.Text, nullable=True)
+    ativo = db.Column(db.Boolean, default=True)  # True = visível, False = oculto
 
 class Favorito(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -50,7 +51,7 @@ class Progresso(db.Model):
 class AdminLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     admin_id = db.Column(db.Integer, db.ForeignKey('usuario.id'))
-    acao = db.Column(db.String(100))  # Ex: 'cadastro', 'edicao', 'banimento', 'reset_senha'
+    acao = db.Column(db.String(100))
     usuario_afetado_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=True)
     descricao = db.Column(db.Text)
     data_hora = db.Column(db.DateTime, default=datetime.utcnow)

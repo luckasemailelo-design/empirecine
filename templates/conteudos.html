@@ -1,0 +1,397 @@
+{% extends "base.html" %}
+{% block title %}Gestão de Conteúdos{% endblock %}
+{% block content %}
+<div class="admin-container">
+    <h1 class="section-title">Gestão de Conteúdos</h1>
+
+    <!-- Botões de ação -->
+    <div class="admin-actions">
+        <button class="btn" id="btn-add-filme"><i class="fas fa-plus"></i> Adicionar Filme</button>
+        <button class="btn" id="btn-add-serie"><i class="fas fa-plus"></i> Adicionar Série (Episódio)</button>
+        <div class="search-wrapper">
+            <input type="text" id="search-conteudo" class="search-input" placeholder="Pesquisar conteúdo...">
+            <button class="search-btn" id="btn-pesquisar">Pesquisar</button>
+        </div>
+    </div>
+
+    <!-- Lista de conteúdos -->
+    <div class="table-responsive">
+        <table class="tabela-usuarios">
+            <thead>
+                <tr>
+                    <th>Nome</th>
+                    <th>Tipo</th>
+                    <th>Categoria</th>
+                    <th>Status</th>
+                    <th>Ações</th>
+                </tr>
+            </thead>
+            <tbody id="conteudos-list">
+                <!-- Preenchido via JS -->
+            </tbody>
+        </table>
+    </div>
+    <div class="load-more-container">
+        <button id="load-more" class="btn btn-outline" style="display: none;">Carregar Mais</button>
+    </div>
+</div>
+
+<!-- Modal para adicionar/editar filme -->
+<div id="modal-filme" style="display: none;">
+    <div class="modal-overlay">
+        <div class="auth-card modal-card">
+            <h2 id="modal-filme-titulo">Adicionar Filme</h2>
+            <form id="form-filme" class="auth-form">
+                <input type="hidden" id="filme-id">
+                <div class="form-group">
+                    <label for="filme-nome">Nome</label>
+                    <input type="text" id="filme-nome" required>
+                </div>
+                <div class="form-group">
+                    <label for="filme-logo">URL da Logo</label>
+                    <input type="url" id="filme-logo">
+                </div>
+                <div class="form-group">
+                    <label for="filme-categoria">Categoria</label>
+                    <input type="text" id="filme-categoria">
+                </div>
+                <div class="form-group">
+                    <label for="filme-ano">Ano de Lançamento</label>
+                    <input type="text" id="filme-ano">
+                </div>
+                <div class="form-group">
+                    <label for="filme-url">URL do Vídeo</label>
+                    <input type="url" id="filme-url" required>
+                </div>
+                <div class="form-group">
+                    <label for="filme-sinopse">Sinopse</label>
+                    <textarea id="filme-sinopse" rows="3"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Salvar</button>
+                    <button type="button" class="btn btn-outline" id="cancelar-filme">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Modal para adicionar/editar episódio de série -->
+<div id="modal-serie" style="display: none;">
+    <div class="modal-overlay">
+        <div class="auth-card modal-card">
+            <h2 id="modal-serie-titulo">Adicionar Episódio</h2>
+            <form id="form-serie" class="auth-form">
+                <input type="hidden" id="serie-id">
+                <div class="form-group">
+                    <label for="serie-nome">Nome do Episódio</label>
+                    <input type="text" id="serie-nome" required>
+                </div>
+                <div class="form-group">
+                    <label for="serie-serie-nome">Nome da Série</label>
+                    <input type="text" id="serie-serie-nome" required>
+                </div>
+                <div class="form-group">
+                    <label for="serie-temporada">Temporada</label>
+                    <input type="number" id="serie-temporada" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="serie-episodio">Episódio</label>
+                    <input type="number" id="serie-episodio" min="1" required>
+                </div>
+                <div class="form-group">
+                    <label for="serie-logo">URL da Logo</label>
+                    <input type="url" id="serie-logo">
+                </div>
+                <div class="form-group">
+                    <label for="serie-categoria">Categoria</label>
+                    <input type="text" id="serie-categoria">
+                </div>
+                <div class="form-group">
+                    <label for="serie-ano">Ano de Lançamento</label>
+                    <input type="text" id="serie-ano">
+                </div>
+                <div class="form-group">
+                    <label for="serie-url">URL do Vídeo</label>
+                    <input type="url" id="serie-url" required>
+                </div>
+                <div class="form-group">
+                    <label for="serie-sinopse">Sinopse do Episódio</label>
+                    <textarea id="serie-sinopse" rows="3"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Salvar</button>
+                    <button type="button" class="btn btn-outline" id="cancelar-serie">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentPage = 1;
+    let currentBusca = '';
+
+    function carregarConteudos(pagina) {
+        let url = `/api/admin/conteudos?pagina=${pagina}`;
+        if (currentBusca) {
+            url += `&busca=${encodeURIComponent(currentBusca)}`;
+        }
+        fetch(url)
+            .then(res => {
+                if (!res.ok) throw new Error('Erro na requisição: ' + res.status);
+                return res.json();
+            })
+            .then(data => {
+                const tbody = document.getElementById('conteudos-list');
+                if (pagina === 1) tbody.innerHTML = '';
+                data.itens.forEach(item => {
+                    const tr = document.createElement('tr');
+                    const statusClass = item.ativo ? '' : 'expirado';
+                    const statusText = item.ativo ? 'Ativo' : 'Oculto';
+                    tr.innerHTML = `
+                        <td>${item.nome}</td>
+                        <td>${item.tipo}</td>
+                        <td>${item.categoria || '-'}</td>
+                        <td class="${statusClass}">${statusText}</td>
+                        <td class="acoes">
+                            <button class="btn-acao editar" onclick="editarConteudo(${item.id})" title="Editar"><i class="fas fa-edit"></i></button>
+                            <button class="btn-acao banir" onclick="toggleAtivo(${item.id}, ${item.ativo})" title="${item.ativo ? 'Ocultar' : 'Mostrar'}"><i class="fas fa-${item.ativo ? 'eye-slash' : 'eye'}"></i></button>
+                            <button class="btn-acao excluir" onclick="excluirConteudo(${item.id})" title="Excluir"><i class="fas fa-trash"></i></button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+                const btn = document.getElementById('load-more');
+                if (data.pagina < data.total_paginas) {
+                    btn.style.display = 'block';
+                    btn.dataset.page = data.pagina + 1;
+                } else {
+                    btn.style.display = 'none';
+                }
+            })
+            .catch(err => {
+                console.error('Erro ao carregar conteúdos:', err);
+                alert('Erro ao carregar conteúdos: ' + err.message);
+            });
+    }
+
+    window.toggleAtivo = function(id, ativo) {
+        if (!confirm(`Deseja ${ativo ? 'ocultar' : 'mostrar'} este conteúdo?`)) return;
+        fetch(`/api/admin/conteudos/${id}/toggle-ativo`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Status alterado com sucesso.');
+                    carregarConteudos(1);
+                } else {
+                    alert('Erro: ' + (data.erro || 'desconhecido'));
+                }
+            })
+            .catch(err => {
+                console.error('Erro ao alterar status:', err);
+                alert('Erro de rede ao alterar status.');
+            });
+    };
+
+    window.excluirConteudo = function(id) {
+        if (!confirm('Tem certeza que deseja excluir permanentemente este conteúdo?')) return;
+        fetch(`/api/admin/conteudos/${id}`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Conteúdo excluído.');
+                    carregarConteudos(1);
+                } else {
+                    alert('Erro: ' + (data.erro || 'desconhecido'));
+                }
+            })
+            .catch(err => {
+                console.error('Erro ao excluir:', err);
+                alert('Erro de rede ao excluir.');
+            });
+    };
+
+    window.editarConteudo = function(id) {
+        fetch(`/api/admin/conteudos/${id}`)
+            .then(res => {
+                if (!res.ok) throw new Error('Erro ao buscar dados');
+                return res.json();
+            })
+            .then(item => {
+                if (item.tipo === 'filme') {
+                    document.getElementById('filme-id').value = item.id;
+                    document.getElementById('filme-nome').value = item.nome || '';
+                    document.getElementById('filme-logo').value = item.logo || '';
+                    document.getElementById('filme-categoria').value = item.categoria || '';
+                    document.getElementById('filme-ano').value = item.ano_lancamento || '';
+                    document.getElementById('filme-url').value = item.url || '';
+                    document.getElementById('filme-sinopse').value = item.sinopse_geral || '';
+                    document.getElementById('modal-filme-titulo').textContent = 'Editar Filme';
+                    document.getElementById('modal-filme').style.display = 'block';
+                } else if (item.tipo === 'serie' && item.temporada !== null) {
+                    document.getElementById('serie-id').value = item.id;
+                    document.getElementById('serie-nome').value = item.nome || '';
+                    document.getElementById('serie-serie-nome').value = item.serie_nome || '';
+                    document.getElementById('serie-temporada').value = item.temporada;
+                    document.getElementById('serie-episodio').value = item.episodio;
+                    document.getElementById('serie-logo').value = item.logo || '';
+                    document.getElementById('serie-categoria').value = item.categoria || '';
+                    document.getElementById('serie-ano').value = item.ano_lancamento || '';
+                    document.getElementById('serie-url').value = item.url || '';
+                    document.getElementById('serie-sinopse').value = item.sinopse_episodio || '';
+                    document.getElementById('modal-serie-titulo').textContent = 'Editar Episódio';
+                    document.getElementById('modal-serie').style.display = 'block';
+                } else {
+                    alert('Tipo não suportado para edição direta.');
+                }
+            })
+            .catch(err => {
+                console.error('Erro ao carregar dados do conteúdo:', err);
+                alert('Erro ao carregar dados do conteúdo.');
+            });
+    };
+
+    // Eventos de submissão
+    document.getElementById('form-filme').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const id = document.getElementById('filme-id').value;
+        const data = {
+            nome: document.getElementById('filme-nome').value,
+            logo: document.getElementById('filme-logo').value,
+            categoria: document.getElementById('filme-categoria').value,
+            ano_lancamento: document.getElementById('filme-ano').value,
+            url: document.getElementById('filme-url').value,
+            sinopse: document.getElementById('filme-sinopse').value
+        };
+        let url = '/api/admin/conteudos/filme';
+        let method = 'POST';
+        if (id) {
+            url = `/api/admin/conteudos/filme/${id}`;
+            method = 'PUT';
+        }
+        fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('Salvo com sucesso.');
+                document.getElementById('modal-filme').style.display = 'none';
+                carregarConteudos(1);
+            } else {
+                alert('Erro: ' + (data.erro || 'desconhecido'));
+            }
+        })
+        .catch(err => {
+            console.error('Erro na requisição:', err);
+            alert('Erro de rede ao salvar.');
+        });
+    });
+
+    document.getElementById('form-serie').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const id = document.getElementById('serie-id').value;
+        const data = {
+            nome: document.getElementById('serie-nome').value,
+            serie_nome: document.getElementById('serie-serie-nome').value,
+            temporada: parseInt(document.getElementById('serie-temporada').value),
+            episodio: parseInt(document.getElementById('serie-episodio').value),
+            logo: document.getElementById('serie-logo').value,
+            categoria: document.getElementById('serie-categoria').value,
+            ano_lancamento: document.getElementById('serie-ano').value,
+            url: document.getElementById('serie-url').value,
+            sinopse: document.getElementById('serie-sinopse').value
+        };
+        let url = '/api/admin/conteudos/serie/episodio';
+        let method = 'POST';
+        if (id) {
+            url = `/api/admin/conteudos/serie/episodio/${id}`;
+            method = 'PUT';
+        }
+        fetch(url, {
+            method: method,
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'ok') {
+                alert('Salvo com sucesso.');
+                document.getElementById('modal-serie').style.display = 'none';
+                carregarConteudos(1);
+            } else {
+                alert('Erro: ' + (data.erro || 'desconhecido'));
+            }
+        })
+        .catch(err => {
+            console.error('Erro na requisição:', err);
+            alert('Erro de rede ao salvar.');
+        });
+    });
+
+    // Cancelar modais
+    document.getElementById('cancelar-filme').addEventListener('click', () => {
+        document.getElementById('modal-filme').style.display = 'none';
+    });
+    document.getElementById('cancelar-serie').addEventListener('click', () => {
+        document.getElementById('modal-serie').style.display = 'none';
+    });
+
+    // Botões de adicionar
+    document.getElementById('btn-add-filme').addEventListener('click', () => {
+        document.getElementById('filme-id').value = '';
+        document.getElementById('filme-nome').value = '';
+        document.getElementById('filme-logo').value = '';
+        document.getElementById('filme-categoria').value = '';
+        document.getElementById('filme-ano').value = '';
+        document.getElementById('filme-url').value = '';
+        document.getElementById('filme-sinopse').value = '';
+        document.getElementById('modal-filme-titulo').textContent = 'Adicionar Filme';
+        document.getElementById('modal-filme').style.display = 'block';
+    });
+
+    document.getElementById('btn-add-serie').addEventListener('click', () => {
+        document.getElementById('serie-id').value = '';
+        document.getElementById('serie-nome').value = '';
+        document.getElementById('serie-serie-nome').value = '';
+        document.getElementById('serie-temporada').value = 1;
+        document.getElementById('serie-episodio').value = 1;
+        document.getElementById('serie-logo').value = '';
+        document.getElementById('serie-categoria').value = '';
+        document.getElementById('serie-ano').value = '';
+        document.getElementById('serie-url').value = '';
+        document.getElementById('serie-sinopse').value = '';
+        document.getElementById('modal-serie-titulo').textContent = 'Adicionar Episódio';
+        document.getElementById('modal-serie').style.display = 'block';
+    });
+
+    // Pesquisa
+    const searchInput = document.getElementById('search-conteudo');
+    const searchBtn = document.getElementById('btn-pesquisar');
+    function performSearch() {
+        currentBusca = searchInput.value.trim();
+        currentPage = 1;
+        carregarConteudos(1);
+    }
+    searchBtn.addEventListener('click', performSearch);
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') performSearch();
+    });
+
+    // Carregar mais
+    document.getElementById('load-more').addEventListener('click', function() {
+        const nextPage = parseInt(this.dataset.page);
+        carregarConteudos(nextPage);
+    });
+
+    // Inicialização
+    document.addEventListener('DOMContentLoaded', function() {
+        carregarConteudos(1);
+    });
+</script>
+{% endblock %}
