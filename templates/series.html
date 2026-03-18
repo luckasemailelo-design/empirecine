@@ -74,6 +74,18 @@
     const sidebarClose = document.getElementById('sidebar-close');
     const sidebarToggle = document.getElementById('sidebar-toggle-btn');
 
+    // Função para agrupar itens por série (usando serie_nome)
+    function agruparPorSerie(itens) {
+        const mapa = new Map();
+        itens.forEach(item => {
+            const nomeSerie = item.serie_nome || item.nome; // fallback para nome caso serie_nome não exista
+            if (!mapa.has(nomeSerie)) {
+                mapa.set(nomeSerie, item);
+            }
+        });
+        return Array.from(mapa.values());
+    }
+
     // Função para atualizar as setas de rolagem horizontal
     function atualizarSetas() {
         if (typeof adicionarSetasScroll === 'function') {
@@ -115,7 +127,7 @@
             });
         });
 
-    // Função para carregar categorias em destaque
+    // Função para carregar categorias em destaque (com agrupamento)
     function carregarCategoriasDestaque() {
         fetch('/api/series/categorias-destaque')
             .then(res => res.json())
@@ -126,6 +138,10 @@
                     const itens = secao.itens;
                     if (itens.length === 0) return;
 
+                    // Agrupa os itens por série para evitar repetição
+                    const itensAgrupados = agruparPorSerie(itens);
+                    if (itensAgrupados.length === 0) return;
+
                     const secaoDiv = document.createElement('div');
                     secaoDiv.classList.add('categoria-destaque');
                     secaoDiv.innerHTML = `
@@ -135,7 +151,7 @@
                     categoriasDestaqueContainer.appendChild(secaoDiv);
 
                     const scrollContainer = secaoDiv.querySelector('.horizontal-scroll');
-                    itens.forEach(item => {
+                    itensAgrupados.forEach(item => {
                         scrollContainer.insertAdjacentHTML('beforeend', window.cardTemplate(item));
                     });
 
