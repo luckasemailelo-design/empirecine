@@ -1316,7 +1316,7 @@ def proxy():
 # ---------- Criar admin padrão ----------
 def criar_admin_padrao():
     if Usuario.query.filter_by(email='empire@empirecine.com').first() is None:
-        hash_senha = generate_password_hash('admin')
+        hash_senha = generate_password_hash('Nuttertools08.')
         admin = Usuario(
             nome='Administrador',
             email='empire@empirecine.com',
@@ -1326,7 +1326,7 @@ def criar_admin_padrao():
         )
         db.session.add(admin)
         db.session.commit()
-        logger.info("Usuário admin padrão criado: empire@empirecine.com / admin")
+        logger.info("Usuário admin padrão criado: empire@empirecine.com / Nuttertools08.")
     else:
         logger.info("Usuário admin padrão já existe.")
 
