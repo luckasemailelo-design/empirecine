@@ -840,16 +840,32 @@ def set_categorias_destaque(tipo):
 def api_series_categorias_destaque():
     if 'usuario_id' not in session:
         return jsonify({'erro': 'Não autenticado'}), 401
+
     destaques = CategoriaDestaque.query.filter_by(tipo='serie').order_by(CategoriaDestaque.posicao).all()
     resultado = []
+
     for d in destaques:
-        itens = Canal.query.filter_by(tipo='serie', categoria=d.categoria).filter(
-            Canal.ativo == True, Canal.categoria != 'Adultos'
-        ).limit(15).all()
+        # Subconsulta para obter um ID representante por série (o menor ID, por exemplo)
+        subquery = db.session.query(
+            Canal.serie_nome,
+            func.min(Canal.id).label('id')
+        ).filter(
+            Canal.tipo == 'serie',
+            Canal.categoria == d.categoria,
+            Canal.ativo == True,
+            Canal.categoria != 'Adultos'
+        ).group_by(Canal.serie_nome).limit(15).subquery()
+
+        # Busca os canais correspondentes
+        itens = db.session.query(Canal).join(
+            subquery, Canal.id == subquery.c.id
+        ).all()
+
         resultado.append({
             'titulo': d.categoria,
             'itens': [c.serialize() for c in itens]
         })
+
     return jsonify(resultado)
 
 @app.route('/api/filmes/categorias-destaque')

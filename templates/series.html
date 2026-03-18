@@ -74,22 +74,6 @@
     const sidebarClose = document.getElementById('sidebar-close');
     const sidebarToggle = document.getElementById('sidebar-toggle-btn');
 
-    // Função para agrupar itens por série (usando serie_nome normalizado)
-    function agruparPorSerie(itens) {
-        const mapa = new Map();
-        itens.forEach(item => {
-            // Usa serie_nome se existir, senão usa o nome (para filmes ou outros)
-            let chave = item.serie_nome || item.nome;
-            if (!chave) return; // Ignora itens sem identificador
-            // Normaliza: remove espaços extras e converte para minúsculas para evitar duplicatas por diferenças
-            chave = chave.trim().toLowerCase();
-            if (!mapa.has(chave)) {
-                mapa.set(chave, item);
-            }
-        });
-        return Array.from(mapa.values());
-    }
-
     // Função para atualizar as setas de rolagem horizontal
     function atualizarSetas() {
         if (typeof adicionarSetasScroll === 'function') {
@@ -131,7 +115,7 @@
             });
         });
 
-    // Função para carregar categorias em destaque (com agrupamento)
+    // Função para carregar categorias em destaque (sem agrupamento, pois o backend já retorna séries únicas)
     function carregarCategoriasDestaque() {
         fetch('/api/series/categorias-destaque')
             .then(res => res.json())
@@ -145,12 +129,6 @@
 
                     console.log(`Categoria "${titulo}" recebeu ${itens.length} itens.`);
 
-                    // Agrupa os itens por série para evitar repetição
-                    const itensAgrupados = agruparPorSerie(itens);
-                    console.log(`Após agrupar: ${itensAgrupados.length} itens únicos.`);
-
-                    if (itensAgrupados.length === 0) return;
-
                     const secaoDiv = document.createElement('div');
                     secaoDiv.classList.add('categoria-destaque');
                     secaoDiv.innerHTML = `
@@ -160,9 +138,7 @@
                     categoriasDestaqueContainer.appendChild(secaoDiv);
 
                     const scrollContainer = secaoDiv.querySelector('.horizontal-scroll');
-                    // Limita a exibição a no máximo 15 itens (embora já venham no máximo 15 da API)
-                    const itensParaExibir = itensAgrupados.slice(0, 15);
-                    itensParaExibir.forEach(item => {
+                    itens.forEach(item => {
                         scrollContainer.insertAdjacentHTML('beforeend', window.cardTemplate(item));
                     });
 
