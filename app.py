@@ -7,7 +7,7 @@ import string
 import requests
 from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, abort
 from database import init_db, db
-from models import Usuario, Canal, Favorito, Progresso, AdminLog
+from models import Usuario, Canal, Favorito, Progresso, AdminLog, CategoriaDestaque
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
 from datetime import datetime, timedelta
@@ -616,6 +616,7 @@ def importar_m3u():
         if erro:
             return jsonify({'erro': erro}), 400
 
+        # Limpa a tabela atual e insere os novos dados
         Canal.query.delete()
         db.session.bulk_insert_mappings(Canal, dados)
         db.session.commit()
@@ -800,6 +801,72 @@ def admin_edit_episodio(id):
     db.session.commit()
     registrar_log_admin('editar_episodio', usuario_afetado_id=canal.id, descricao=f'Episódio editado: {canal.nome}')
     return jsonify({'status': 'ok'})
+
+# ==================== NOVAS ROTAS PARA CATEGORIAS DESTAQUE ====================
+@app.route('/api/admin/categorias-destaque/<tipo>', methods=['GET'])
+@admin_required
+def get_categorias_destaque(tipo):
+    if tipo not in ['serie', 'filme']:
+        return jsonify({'erro': 'Tipo inválido'}), 400
+    destaques = CategoriaDestaque.query.filter_by(tipo=tipo).order_by(CategoriaDestaque.posicao).all()
+    # Lista todas as categorias disponíveis (excluindo Adultos)
+    todas_categorias = db.session.query(Canal.categoria).filter_by(tipo=tipo).filter(Canal.categoria != 'Adultos').distinct().all()
+    categorias_disponiveis = [c[0] for c in todas_categorias if c[0]]
+    return jsonify({
+        'destaques': [d.categoria for d in destaques],
+        'disponiveis': categorias_disponiveis
+    })
+
+@app.route('/api/admin/categorias-destaque/<tipo>', methods=['POST'])
+@admin_required
+def set_categorias_destaque(tipo):
+    if tipo not in ['serie', 'filme']:
+        return jsonify({'erro': 'Tipo inválido'}), 400
+    data = request.get_json()
+    categorias = data.get('categorias', [])
+    if len(categorias) > 5:
+        return jsonify({'erro': 'Máximo de 5 categorias'}), 400
+    # Remove as atuais
+    CategoriaDestaque.query.filter_by(tipo=tipo).delete()
+    # Insere novas
+    for i, cat in enumerate(categorias):
+        cd = CategoriaDestaque(tipo=tipo, categoria=cat, posicao=i+1)
+        db.session.add(cd)
+    db.session.commit()
+    registrar_log_admin('configurar_destaques', descricao=f'{tipo}: {categorias}')
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/series/categorias-destaque')
+def api_series_categorias_destaque():
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    destaques = CategoriaDestaque.query.filter_by(tipo='serie').order_by(CategoriaDestaque.posicao).all()
+    resultado = []
+    for d in destaques:
+        itens = Canal.query.filter_by(tipo='serie', categoria=d.categoria).filter(
+            Canal.ativo == True, Canal.categoria != 'Adultos'
+        ).limit(15).all()
+        resultado.append({
+            'titulo': d.categoria,
+            'itens': [c.serialize() for c in itens]
+        })
+    return jsonify(resultado)
+
+@app.route('/api/filmes/categorias-destaque')
+def api_filmes_categorias_destaque():
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    destaques = CategoriaDestaque.query.filter_by(tipo='filme').order_by(CategoriaDestaque.posicao).all()
+    resultado = []
+    for d in destaques:
+        itens = Canal.query.filter_by(tipo='filme', categoria=d.categoria).filter(
+            Canal.ativo == True, Canal.categoria != 'Adultos'
+        ).limit(15).all()
+        resultado.append({
+            'titulo': d.categoria,
+            'itens': [c.serialize() for c in itens]
+        })
+    return jsonify(resultado)
 
 # ---------- API pública ----------
 def get_random_items(tipo, limite=15, ano=None):

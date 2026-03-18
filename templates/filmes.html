@@ -38,12 +38,10 @@
         <div id="secoes-fixas">
             <h2 class="section-title">Lançamento</h2>
             <div class="horizontal-scroll" id="lancamento"></div>
-            <h2 class="section-title">Comédia</h2>
-            <div class="horizontal-scroll" id="comedia"></div>
-            <h2 class="section-title">Ação</h2>
-            <div class="horizontal-scroll" id="acao"></div>
-            <h2 class="section-title">Romance</h2>
-            <div class="horizontal-scroll" id="romance"></div>
+
+            <!-- Container para as categorias em destaque -->
+            <div id="categorias-destaque-container"></div>
+
             <h2 class="section-title">Todos os filmes (A-Z)</h2>
             <div class="category-grid" id="todos-filmes"></div>
             <div class="load-more-container">
@@ -77,6 +75,7 @@
     const sidebar = document.getElementById('sidebar');
     const sidebarClose = document.getElementById('sidebar-close');
     const sidebarToggle = document.getElementById('sidebar-toggle-btn');
+    const destaqueContainer = document.getElementById('categorias-destaque-container');
 
     function atualizarSetas() {
         if (typeof adicionarSetasScroll === 'function') {
@@ -94,6 +93,7 @@
         options.style.display = options.style.display === 'none' ? 'block' : 'none';
     };
 
+    // Carregar anos
     fetch('/api/filmes/anos')
         .then(res => res.json())
         .then(anos => {
@@ -105,6 +105,7 @@
             });
         });
 
+    // Carregar categorias
     fetch('/api/filmes/categorias')
         .then(res => res.json())
         .then(categorias => {
@@ -116,7 +117,39 @@
             });
         });
 
+    // Carregar categorias em destaque
+    function carregarCategoriasDestaque() {
+        fetch('/api/filmes/categorias-destaque')
+            .then(res => res.json())
+            .then(data => {
+                destaqueContainer.innerHTML = '';
+                data.forEach(secao => {
+                    // Cria o título da seção
+                    const titulo = document.createElement('h2');
+                    titulo.className = 'section-title';
+                    titulo.textContent = secao.titulo;
+                    destaqueContainer.appendChild(titulo);
+
+                    // Cria o container horizontal
+                    const scrollDiv = document.createElement('div');
+                    scrollDiv.className = 'horizontal-scroll';
+                    destaqueContainer.appendChild(scrollDiv);
+
+                    // Preenche com os cards
+                    secao.itens.forEach(item => {
+                        scrollDiv.insertAdjacentHTML('beforeend', window.cardTemplate(item));
+                    });
+
+                    // Atualiza estado dos favoritos e setas de scroll
+                    carregarEstadoFavoritos();
+                    atualizarSetas();
+                });
+            })
+            .catch(err => console.error('Erro ao carregar categorias destaque:', err));
+    }
+
     function carregarSecoesFixas() {
+        // Lançamento
         fetch('/api/filmes/lancamento')
             .then(res => res.json())
             .then(data => {
@@ -126,33 +159,11 @@
                 carregarEstadoFavoritos();
                 atualizarSetas();
             });
-        fetch('/api/filmes/categoria/Comédia')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('comedia');
-                container.innerHTML = '';
-                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
-                carregarEstadoFavoritos();
-                atualizarSetas();
-            });
-        fetch('/api/filmes/categoria/Thriller')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('acao');
-                container.innerHTML = '';
-                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
-                carregarEstadoFavoritos();
-                atualizarSetas();
-            });
-        fetch('/api/filmes/categoria/Romance')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('romance');
-                container.innerHTML = '';
-                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
-                carregarEstadoFavoritos();
-                atualizarSetas();
-            });
+
+        // Categorias em destaque
+        carregarCategoriasDestaque();
+
+        // Todos os filmes
         carregarListaTodos(1);
     }
 
@@ -237,7 +248,7 @@
         carregarCategoria(currentCategoria, parseInt(this.dataset.page));
     });
 
-    // Controle da sidebar no mobile (idêntico ao series.html)
+    // Controle da sidebar no mobile
     function isMobile() { return window.innerWidth <= 768; }
 
     function openSidebar() {
@@ -283,6 +294,7 @@
         }
     });
 
+    // Inicialização
     carregarSecoesFixas();
 
     window.setupSearch('search-input', 'search-btn', function(termo) {

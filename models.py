@@ -58,3 +58,9 @@ class AdminLog(db.Model):
 
     admin = db.relationship('Usuario', foreign_keys=[admin_id])
     usuario_afetado = db.relationship('Usuario', foreign_keys=[usuario_afetado_id])
+    
+class CategoriaDestaque(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.String(20))  # 'serie' ou 'filme'
+    categoria = db.Column(db.String(100))
+    posicao = db.Column(db.Integer)  # ordem de exibição (1 a 5)

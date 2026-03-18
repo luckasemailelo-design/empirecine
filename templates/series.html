@@ -35,24 +35,17 @@
             <i class="fas fa-filter"></i> Filtrar
         </button>
 
-        <div id="secoes-fixas">
-            <h2 class="section-title">Lançamento</h2>
-            <div class="horizontal-scroll" id="lancamento"></div>
-            <h2 class="section-title">Globoplay</h2>
-            <div class="horizontal-scroll" id="globoplay"></div>
-            <h2 class="section-title">Disney+</h2>
-            <div class="horizontal-scroll" id="disney"></div>
-            <h2 class="section-title">Animes</h2>
-            <div class="horizontal-scroll" id="animes"></div>
-            <h2 class="section-title">Doramas</h2>
-            <div class="horizontal-scroll" id="doramas"></div>
-            <h2 class="section-title">Todas as séries (A-Z)</h2>
-            <div class="category-grid" id="todas-series"></div>
-            <div class="load-more-container">
-                <button id="load-more-todos" class="btn btn-outline" style="display: none;">Carregar Mais</button>
-            </div>
+        <!-- Container para categorias em destaque -->
+        <div id="categorias-destaque-container"></div>
+
+        <!-- Seção "Todas as séries" (sempre visível) -->
+        <h2 class="section-title">Todas as séries (A-Z)</h2>
+        <div class="category-grid" id="todas-series"></div>
+        <div class="load-more-container">
+            <button id="load-more-todos" class="btn btn-outline" style="display: none;">Carregar Mais</button>
         </div>
 
+        <!-- Conteúdo de categoria específica (quando selecionada na sidebar) -->
         <div id="categoria-content" style="display: none;">
             <h1 class="section-title" id="categoria-titulo"></h1>
             <div class="category-grid" id="categoria-grid"></div>
@@ -70,7 +63,8 @@
     let currentCategoria = 'todos';
     let currentAno = '';
 
-    const secoesFixas = document.getElementById('secoes-fixas');
+    const categoriasDestaqueContainer = document.getElementById('categorias-destaque-container');
+    const todasSeries = document.getElementById('todas-series');
     const categoriaContent = document.getElementById('categoria-content');
     const categoriaTitulo = document.getElementById('categoria-titulo');
     const categoriaGrid = document.getElementById('categoria-grid');
@@ -109,7 +103,7 @@
             });
         });
 
-    // Carregar categorias
+    // Carregar categorias para a sidebar
     fetch('/api/series/categorias')
         .then(res => res.json())
         .then(categorias => {
@@ -121,65 +115,46 @@
             });
         });
 
-    // Função para carregar seções fixas
-    function carregarSecoesFixas() {
-        fetch('/api/series/lancamento')
+    // Função para carregar categorias em destaque
+    function carregarCategoriasDestaque() {
+        fetch('/api/series/categorias-destaque')
             .then(res => res.json())
             .then(data => {
-                const container = document.getElementById('lancamento');
-                container.innerHTML = '';
-                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
-                carregarEstadoFavoritos();
-                atualizarSetas();
-            });
-        fetch('/api/series/categoria/Globoplay')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('globoplay');
-                container.innerHTML = '';
-                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
-                carregarEstadoFavoritos();
-                atualizarSetas();
-            });
-        fetch('/api/series/categoria/Disney+')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('disney');
-                container.innerHTML = '';
-                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
-                carregarEstadoFavoritos();
-                atualizarSetas();
-            });
-        fetch('/api/series/categoria/Animes')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('animes');
-                container.innerHTML = '';
-                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
-                carregarEstadoFavoritos();
-                atualizarSetas();
-            });
-        fetch('/api/series/categoria/Doramas')
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('doramas');
-                container.innerHTML = '';
-                data.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
-                carregarEstadoFavoritos();
-                atualizarSetas();
-            });
-        carregarListaTodos(1);
+                categoriasDestaqueContainer.innerHTML = '';
+                data.forEach(secao => {
+                    const titulo = secao.titulo;
+                    const itens = secao.itens;
+                    if (itens.length === 0) return;
+
+                    const secaoDiv = document.createElement('div');
+                    secaoDiv.classList.add('categoria-destaque');
+                    secaoDiv.innerHTML = `
+                        <h2 class="section-title">${titulo}</h2>
+                        <div class="horizontal-scroll" data-categoria="${titulo}"></div>
+                    `;
+                    categoriasDestaqueContainer.appendChild(secaoDiv);
+
+                    const scrollContainer = secaoDiv.querySelector('.horizontal-scroll');
+                    itens.forEach(item => {
+                        scrollContainer.insertAdjacentHTML('beforeend', window.cardTemplate(item));
+                    });
+
+                    carregarEstadoFavoritos();
+                    atualizarSetas();
+                });
+            })
+            .catch(err => console.error('Erro ao carregar categorias destaque:', err));
     }
 
+    // Função para carregar lista de todas as séries (A-Z)
     function carregarListaTodos(pagina) {
         let url = `/api/series/lista?pagina=${pagina}`;
         if (currentAno) url += `&ano=${currentAno}`;
         fetch(url)
             .then(res => res.json())
             .then(data => {
-                const container = document.getElementById('todas-series');
-                if (pagina === 1) container.innerHTML = '';
-                data.itens.forEach(item => container.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
+                if (pagina === 1) todasSeries.innerHTML = '';
+                data.itens.forEach(item => todasSeries.insertAdjacentHTML('beforeend', window.cardTemplate(item)));
                 carregarEstadoFavoritos();
                 if (data.pagina < data.total_paginas) {
                     loadMoreTodos.style.display = 'block';
@@ -190,43 +165,7 @@
             });
     }
 
-    document.addEventListener('click', function(e) {
-        const link = e.target.closest('.categoria-link');
-        if (link) {
-            e.preventDefault();
-            document.querySelectorAll('.categoria-link').forEach(l => l.classList.remove('active'));
-            link.classList.add('active');
-            const categoria = link.dataset.categoria;
-            currentCategoria = categoria;
-            currentPage = 1;
-            if (categoria === 'todos') {
-                secoesFixas.style.display = 'block';
-                categoriaContent.style.display = 'none';
-                carregarListaTodos(1);
-            } else {
-                secoesFixas.style.display = 'none';
-                categoriaContent.style.display = 'block';
-                categoriaTitulo.textContent = `Séries - ${categoria}`;
-                carregarCategoria(categoria, 1);
-            }
-        }
-        const anoLink = e.target.closest('.ano-link');
-        if (anoLink) {
-            e.preventDefault();
-            document.querySelectorAll('.ano-link').forEach(l => l.classList.remove('active'));
-            anoLink.classList.add('active');
-            currentAno = anoLink.dataset.ano;
-            currentPage = 1;
-            if (currentCategoria === 'todos') {
-                document.getElementById('todas-series').innerHTML = '';
-                carregarListaTodos(1);
-            } else {
-                categoriaGrid.innerHTML = '';
-                carregarCategoria(currentCategoria, 1);
-            }
-        }
-    });
-
+    // Função para carregar conteúdo de uma categoria específica
     function carregarCategoria(categoria, pagina) {
         let url = `/api/series/categoria/${encodeURIComponent(categoria)}/lista?pagina=${pagina}`;
         if (currentAno) url += `&ano=${currentAno}`;
@@ -245,9 +184,59 @@
             });
     }
 
+    // Eventos de clique nos links da sidebar
+    document.addEventListener('click', function(e) {
+        const link = e.target.closest('.categoria-link');
+        if (link) {
+            e.preventDefault();
+            document.querySelectorAll('.categoria-link').forEach(l => l.classList.remove('active'));
+            link.classList.add('active');
+            const categoria = link.dataset.categoria;
+            currentCategoria = categoria;
+            currentPage = 1;
+            if (categoria === 'todos') {
+                // Mostrar categorias destaque e todas as séries
+                categoriasDestaqueContainer.style.display = 'block';
+                document.querySelector('h2.section-title').style.display = 'block'; // Título "Todas as séries"
+                todasSeries.style.display = 'grid';
+                loadMoreTodos.style.display = 'none'; // Será mostrado conforme necessidade
+                categoriaContent.style.display = 'none';
+                carregarListaTodos(1);
+            } else {
+                // Esconder categorias destaque e mostrar apenas a categoria selecionada
+                categoriasDestaqueContainer.style.display = 'none';
+                document.querySelector('h2.section-title').style.display = 'none';
+                todasSeries.style.display = 'none';
+                loadMoreTodos.style.display = 'none';
+                categoriaContent.style.display = 'block';
+                categoriaTitulo.textContent = `Séries - ${categoria}`;
+                carregarCategoria(categoria, 1);
+            }
+        }
+
+        const anoLink = e.target.closest('.ano-link');
+        if (anoLink) {
+            e.preventDefault();
+            document.querySelectorAll('.ano-link').forEach(l => l.classList.remove('active'));
+            anoLink.classList.add('active');
+            currentAno = anoLink.dataset.ano;
+            currentPage = 1;
+            if (currentCategoria === 'todos') {
+                todasSeries.innerHTML = '';
+                carregarListaTodos(1);
+            } else {
+                categoriaGrid.innerHTML = '';
+                carregarCategoria(currentCategoria, 1);
+            }
+        }
+    });
+
+    // Carregar mais para "Todas as séries"
     loadMoreTodos.addEventListener('click', function() {
         carregarListaTodos(parseInt(this.dataset.page));
     });
+
+    // Carregar mais para categoria específica
     loadMoreCategoria.addEventListener('click', function() {
         carregarCategoria(currentCategoria, parseInt(this.dataset.page));
     });
@@ -302,7 +291,9 @@
         }
     });
 
-    carregarSecoesFixas();
+    // Inicialização: carregar categorias destaque e todas as séries
+    carregarCategoriasDestaque();
+    carregarListaTodos(1);
 
     // Pesquisa
     window.setupSearch('search-input', 'search-btn', function(termo) {

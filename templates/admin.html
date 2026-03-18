@@ -41,6 +41,7 @@
         <button class="btn" id="btn-cadastrar"><i class="fas fa-plus"></i> Cadastro de Usuário</button>
         <button class="btn btn-outline" id="btn-registro"><i class="fas fa-history"></i> Registro de Ações</button>
         <a href="{{ url_for('conteudos') }}" class="btn btn-outline"><i class="fas fa-film"></i> Gerir Conteúdos</a>
+        <button class="btn btn-outline" id="btn-categorias-destaque"><i class="fas fa-star"></i> Categorias Destaque</button>
         {% if usuario_atual and usuario_atual.email == 'empire@empirecine.com' %}
         <button class="btn btn-outline" id="btn-importar"><i class="fas fa-upload"></i> Importar M3U</button>
         {% endif %}
@@ -200,6 +201,30 @@
         </div>
     </div>
 </div>
+
+<!-- Modal Categorias Destaque -->
+<div id="modal-categorias-destaque" style="display: none;">
+    <div class="modal-overlay">
+        <div class="auth-card modal-card" style="max-width: 600px;">
+            <h2>Configurar Categorias em Destaque</h2>
+            <div style="margin-bottom: 1rem;">
+                <label for="tipo-destaque">Tipo:</label>
+                <select id="tipo-destaque" class="search-input">
+                    <option value="filme">Filmes</option>
+                    <option value="serie">Séries</option>
+                </select>
+            </div>
+            <div id="destaque-categorias-container">
+                <!-- 5 selects serão gerados via JS -->
+            </div>
+            <div class="form-actions">
+                <button class="btn" id="salvar-destaques">Salvar</button>
+                <button class="btn btn-outline" id="cancelar-destaques">Cancelar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -499,6 +524,75 @@
         searchBtn.addEventListener('click', performSearch);
         searchInput.addEventListener('keypress', (e) => {
             if (e.key === 'Enter') performSearch();
+        });
+
+        // ==================== CATEGORIAS DESTAQUE ====================
+        function carregarCategoriasDestaque(tipo) {
+            fetch(`/api/admin/categorias-destaque/${tipo}`)
+                .then(res => res.json())
+                .then(data => {
+                    const container = document.getElementById('destaque-categorias-container');
+                    container.innerHTML = '';
+                    if (data.disponiveis.length === 0) {
+                        container.innerHTML = '<p>Nenhuma categoria disponível para este tipo.</p>';
+                        return;
+                    }
+                    for (let i = 0; i < 5; i++) {
+                        const select = document.createElement('select');
+                        select.className = 'search-input';
+                        select.style.marginBottom = '10px';
+                        const optionVazia = document.createElement('option');
+                        optionVazia.value = '';
+                        optionVazia.textContent = '-- Selecione --';
+                        select.appendChild(optionVazia);
+                        data.disponiveis.forEach(cat => {
+                            const opt = document.createElement('option');
+                            opt.value = cat;
+                            opt.textContent = cat;
+                            if (data.destaques[i] === cat) opt.selected = true;
+                            select.appendChild(opt);
+                        });
+                        container.appendChild(select);
+                    }
+                });
+        }
+
+        function abrirModalCategoriasDestaque() {
+            const tipo = document.getElementById('tipo-destaque').value;
+            carregarCategoriasDestaque(tipo);
+            document.getElementById('modal-categorias-destaque').style.display = 'block';
+        }
+
+        document.getElementById('btn-categorias-destaque').addEventListener('click', abrirModalCategoriasDestaque);
+        document.getElementById('cancelar-destaques').addEventListener('click', () => {
+            document.getElementById('modal-categorias-destaque').style.display = 'none';
+        });
+
+        document.getElementById('tipo-destaque').addEventListener('change', function() {
+            carregarCategoriasDestaque(this.value);
+        });
+
+        document.getElementById('salvar-destaques').addEventListener('click', function() {
+            const tipo = document.getElementById('tipo-destaque').value;
+            const selects = document.querySelectorAll('#destaque-categorias-container select');
+            const categorias = [];
+            selects.forEach(sel => {
+                if (sel.value) categorias.push(sel.value);
+            });
+            fetch(`/api/admin/categorias-destaque/${tipo}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({categorias: categorias})
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Configuração salva!');
+                    document.getElementById('modal-categorias-destaque').style.display = 'none';
+                } else {
+                    alert('Erro: ' + (data.erro || 'desconhecido'));
+                }
+            });
         });
     });
 </script>
