@@ -64,3 +64,12 @@ class CategoriaDestaque(db.Model):
     tipo = db.Column(db.String(20))  # 'serie' ou 'filme'
     categoria = db.Column(db.String(100))
     posicao = db.Column(db.Integer)  # ordem de exibição (1 a 5)
+
+# Nova tabela para controle de sessões ativas (apenas uma por usuário comum)
+class SessaoAtiva(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey('usuario.id'), nullable=False)
+    token = db.Column(db.String(200), nullable=False)
+    data_criacao = db.Column(db.DateTime, default=datetime.utcnow)
+
+    usuario = db.relationship('Usuario', backref='sessoes_ativas')
