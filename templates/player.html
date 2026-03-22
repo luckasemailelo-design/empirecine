@@ -11,6 +11,30 @@
             <i class="fas fa-spinner fa-spin"></i>
         </div>
 
+        <!-- ===== OVERLAY DA CONTAGEM REGRESSIVA ===== -->
+        <div class="countdown-overlay" id="countdown-overlay" style="display: none;">
+            <div class="countdown-content">
+                <div class="countdown-timer" id="countdown-timer">
+                    <i class="fas fa-clock"></i> 10s
+                </div>
+                <div class="countdown-text">
+                    <span>Próximo episódio em:</span>
+                    <span id="countdown-action">Clique para continuar assistindo ou espere</span>
+                </div>
+                <div class="countdown-buttons">
+                    <button class="countdown-btn continue-btn" id="continue-btn">
+                        <i class="fas fa-play"></i> Continuar
+                    </button>
+                    <button class="countdown-btn next-btn" id="next-episode-btn">
+                        <i class="fas fa-step-forward"></i> Próximo
+                    </button>
+                    <button class="countdown-btn close-btn" id="cancel-countdown-btn">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
         <div class="custom-controls" id="custom-controls">
             <div class="progress-bar-container" id="progress-container">
                 <div class="progress-bar" id="progress-bar"></div>
@@ -30,7 +54,7 @@
                 </div>
                 <div class="right-controls">
                     {% if proximo_episodio %}
-                    <button class="control-btn next-btn" id="next-episode-btn">
+                    <button class="control-btn next-btn" id="manual-next-episode-btn" style="display: none;">
                         <i class="fas fa-step-forward"></i> <span class="next-text">Próx</span>
                     </button>
                     {% endif %}
@@ -40,7 +64,7 @@
                 </div>
             </div>
 
-            <!-- 🎛️ SLIDER DE VOLUME NA HUD - AO LADO DO BOTÃO -->
+            <!-- SLIDER DE VOLUME NA HUD -->
             <div class="volume-hud-container" id="volume-hud-container">
                 <div class="volume-slider-track" id="volume-slider-track">
                     <div class="volume-slider-fill" id="volume-slider-fill"></div>
@@ -59,6 +83,37 @@
         <div class="double-tap-indicator right" id="double-tap-right">
             30s <i class="fas fa-redo-alt"></i>
         </div>
+
+        <!-- ===== CARD FLUTUANTE DO PRÓXIMO EPISÓDIO (DENTRO DO VÍDEO) ===== -->
+        {% if proximo_episodio %}
+        <div class="next-episode-overlay" id="next-episode-overlay">
+            <div class="next-episode-card">
+                <button class="close-card-btn" id="close-overlay-btn" aria-label="Fechar">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="next-episode-image">
+                    <img src="{{ proximo_episodio.logo or '/static/images/placeholder.png' }}" alt="Próximo episódio">
+                </div>
+                <div class="next-episode-info">
+                    <h3>Próximo episódio</h3>
+                    <h4>
+                        {% if canal.tipo == 'serie' %}
+                            {{ canal.serie_nome }} - Episódio {{ proximo_episodio.episodio }}
+                            {% if proximo_episodio.temporada %}
+                                (Temporada {{ proximo_episodio.temporada }})
+                            {% endif %}
+                        {% else %}
+                            {{ proximo_episodio.nome }}
+                        {% endif %}
+                    </h4>
+                    <p class="next-episode-sinopse">{{ proximo_episodio.sinopse_episodio or 'Sinopse não disponível.' }}</p>
+                    <button class="next-episode-btn" id="overlay-next-episode-btn">
+                        <i class="fas fa-step-forward"></i> Assistir agora
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     <div class="player-info">
@@ -77,7 +132,33 @@
         </div>
     </div>
 
-    <!-- ===== NOVO: MENU DE EPISÓDIOS LATERAL ===== -->
+    <!-- ===== CARD ABAIXO DO PLAYER (SEMPRE VISÍVEL) ===== -->
+    {% if proximo_episodio %}
+    <div class="next-episode-card-below" id="next-episode-card-below">
+        <div class="next-episode-image-below">
+            <img src="{{ proximo_episodio.logo or '/static/images/placeholder.png' }}" alt="Próximo episódio">
+        </div>
+        <div class="next-episode-info-below">
+            <h3>Próximo episódio</h3>
+            <h4>
+                {% if canal.tipo == 'serie' %}
+                    {{ canal.serie_nome }} - Episódio {{ proximo_episodio.episodio }}
+                    {% if proximo_episodio.temporada %}
+                        (Temporada {{ proximo_episodio.temporada }})
+                    {% endif %}
+                {% else %}
+                    {{ proximo_episodio.nome }}
+                {% endif %}
+            </h4>
+            <p class="next-episode-sinopse-below">{{ proximo_episodio.sinopse_episodio or 'Sinopse não disponível.' }}</p>
+            <button class="next-episode-btn-below" id="below-next-episode-btn">
+                <i class="fas fa-step-forward"></i> Assistir agora
+            </button>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- ===== MENU DE EPISÓDIOS LATERAL ===== -->
     {% if canal.tipo == 'serie' %}
     <div class="episode-sidebar" id="episode-sidebar">
         <div class="episode-sidebar-header">
@@ -97,7 +178,7 @@
 <link href="https://vjs.zencdn.net/7.20.3/video-js.css" rel="stylesheet" />
 <script src="https://vjs.zencdn.net/7.20.3/video.min.js"></script>
 <style>
-/* Estilos existentes mantidos intactos */
+/* ===== ESTILOS EXISTENTES (CONTROLES, VOLUME, DOUBLE-TAP, ETC) ===== */
 .custom-controls.suspended {
     opacity: 0 !important;
     visibility: hidden !important;
@@ -163,11 +244,11 @@
     right: 20px;
 }
 
-/* 🎛️ ESTILOS DA BARRA DE VOLUME NA HUD */
+/* VOLUME SLIDER NA HUD */
 .volume-hud-container {
     position: absolute;
     bottom: 10px;
-    left: 115px; /* ✅ Posição perfeita: logo após botão volume */
+    left: 115px;
     width: 110px;
     height: 24px;
     opacity: 0;
@@ -183,7 +264,6 @@
     pointer-events: auto;
 }
 
-/* ✅ MOVIMENTAÇÃO DO TEMPO QUANDO VOLUME SHOW */
 .volume-hud-container.show ~ .controls-row .left-controls .time-display,
 .custom-controls.volume-slider-visible .controls-row .left-controls .time-display {
     transform: translateX(120px);
@@ -235,25 +315,337 @@
     opacity: 1;
 }
 
-/* Mobile adjustments */
-@media (max-width: 768px) {
-    .volume-hud-container {
-        left: 75px;
-        width: 90px;
-    }
-    
-    .volume-hud-container.show ~ .controls-row .left-controls .time-display {
-        transform: translateX(100px);
-    }
-    
-    .volume-slider-handle {
-        width: 12px;
-        height: 12px;
-        right: -5px;
-    }
+/* ===== OVERLAY DA CONTAGEM REGRESSIVA ===== */
+.countdown-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-/* ===== ESTILOS DO NOVO MENU DE EPISÓDIOS ===== */
+.countdown-overlay.show {
+    opacity: 1;
+    visibility: visible;
+}
+
+.countdown-content {
+    background: rgba(20, 20, 20, 0.95);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 20px;
+    padding: 2.5rem;
+    text-align: center;
+    max-width: 450px;
+    width: 90%;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+.countdown-timer {
+    font-size: 3.5rem;
+    font-weight: bold;
+    background: linear-gradient(135deg, #ff6b6b, #4ecdc4);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.countdown-timer i {
+    font-size: 2rem;
+    color: #ff6b6b;
+}
+
+.countdown-text {
+    color: white;
+    font-size: 1.2rem;
+    margin-bottom: 2rem;
+    line-height: 1.5;
+}
+
+.countdown-text span {
+    display: block;
+}
+
+#countdown-action {
+    color: #4ecdc4;
+    font-weight: 500;
+}
+
+.countdown-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.countdown-btn {
+    padding: 0.8rem 1.5rem;
+    border: none;
+    border-radius: 50px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 120px;
+    justify-content: center;
+}
+
+.continue-btn {
+    background: rgba(76, 205, 196, 0.2);
+    color: #4ecdc4;
+    border: 2px solid rgba(76, 205, 196, 0.4);
+}
+
+.continue-btn:hover {
+    background: rgba(76, 205, 196, 0.3);
+    transform: translateY(-2px);
+}
+
+.next-btn {
+    background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
+    color: white;
+}
+
+.next-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(255, 107, 107, 0.4);
+}
+
+.close-btn {
+    background: rgba(255, 255, 255, 0.1);
+    color: white;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+}
+
+/* ===== CARD FLUTUANTE DENTRO DO VÍDEO ===== */
+.next-episode-overlay {
+    position: absolute;
+    bottom: 80px;
+    right: 20px;
+    width: 320px;
+    z-index: 200;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
+    pointer-events: none;
+}
+
+.next-episode-overlay.show {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+}
+
+.next-episode-card {
+    position: relative;
+    background: rgba(0, 0, 0, 0.85);
+    backdrop-filter: blur(8px);
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.5);
+    transition: transform 0.2s ease;
+}
+
+.next-episode-card:hover {
+    transform: scale(1.02);
+    background: rgba(0, 0, 0, 0.9);
+}
+
+.close-card-btn {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    background: rgba(0, 0, 0, 0.7);
+    border: none;
+    color: white;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 2;
+    transition: background 0.2s ease;
+    font-size: 14px;
+}
+
+.close-card-btn:hover {
+    background: rgba(0, 0, 0, 0.9);
+}
+
+.next-episode-image {
+    width: 100%;
+    height: 140px;
+    overflow: hidden;
+}
+
+.next-episode-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.next-episode-info {
+    padding: 12px;
+    padding-right: 40px; /* espaço para o botão fechar */
+}
+
+.next-episode-info h3 {
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #ff6b6b;
+    margin: 0 0 4px 0;
+}
+
+.next-episode-info h4 {
+    font-size: 1rem;
+    margin: 0 0 6px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.next-episode-sinopse {
+    font-size: 0.8rem;
+    color: #ccc;
+    margin: 0 0 12px 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.next-episode-btn {
+    background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
+    border: none;
+    color: white;
+    padding: 8px 16px;
+    border-radius: 30px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    justify-content: center;
+}
+
+.next-episode-btn:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+}
+
+/* ===== CARD ABAIXO DO PLAYER (ESTILO ORIGINAL) ===== */
+.next-episode-card-below {
+    display: flex;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(8px);
+    border-radius: 12px;
+    margin: 20px 0 0 0;
+    padding: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 8px 20px rgba(0,0,0,0.3);
+    transition: transform 0.2s ease;
+}
+
+.next-episode-card-below:hover {
+    transform: translateY(-2px);
+    background: rgba(0, 0, 0, 0.85);
+}
+
+.next-episode-image-below {
+    flex-shrink: 0;
+    width: 120px;
+    height: 68px;
+    margin-right: 1rem;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.next-episode-image-below img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.next-episode-info-below {
+    flex: 1;
+    min-width: 0;
+}
+
+.next-episode-info-below h3 {
+    font-size: 0.9rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: #ff6b6b;
+    margin: 0 0 4px 0;
+}
+
+.next-episode-info-below h4 {
+    font-size: 1.1rem;
+    margin: 0 0 6px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.next-episode-sinopse-below {
+    font-size: 0.85rem;
+    color: #ccc;
+    margin: 0 0 12px 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.next-episode-btn-below {
+    background: linear-gradient(135deg, #ff6b6b, #ff8e8e);
+    border: none;
+    color: white;
+    padding: 6px 16px;
+    border-radius: 30px;
+    font-size: 0.85rem;
+    font-weight: bold;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.next-episode-btn-below:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(255, 107, 107, 0.4);
+}
+
+/* ===== MENU DE EPISÓDIOS LATERAL ===== */
 .episode-sidebar {
     position: fixed;
     top: 60px;
@@ -301,7 +693,6 @@
     padding: 1rem;
 }
 
-/* Temporada */
 .temporada-item {
     margin-bottom: 1rem;
     border: 1px solid rgba(255,255,255,0.1);
@@ -444,12 +835,65 @@
     .episode-sidebar-toggle {
         top: 60px;
     }
+    
+    .volume-hud-container {
+        left: 75px;
+        width: 90px;
+    }
+    
+    .volume-hud-container.show ~ .controls-row .left-controls .time-display {
+        transform: translateX(100px);
+    }
+    
+    .volume-slider-handle {
+        width: 12px;
+        height: 12px;
+        right: -5px;
+    }
+    
+    /* Card flutuante em mobile */
+    .next-episode-overlay {
+        bottom: 70px;
+        right: 10px;
+        left: 10px;
+        width: auto;
+    }
+    
+    .next-episode-image {
+        height: 100px;
+    }
+    
+    .next-episode-info h4 {
+        white-space: normal;
+        font-size: 0.9rem;
+    }
+    
+    /* Card abaixo em mobile */
+    .next-episode-card-below {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 0.8rem;
+    }
+    
+    .next-episode-image-below {
+        width: 100%;
+        height: 140px;
+        margin-right: 0;
+        margin-bottom: 0.8rem;
+    }
+    
+    .next-episode-info-below h4 {
+        white-space: normal;
+        font-size: 1rem;
+    }
 }
 </style>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
         const video = document.getElementById('video-player');
         const canalId = {{ canal.id }};
+        const canalTipo = "{{ canal.tipo }}";
+        const proximoEpisodioUrl = {% if proximo_episodio %}"{{ url_for('play', id=proximo_episodio.id) }}"{% else %}null{% endif %};
         const favoritoBtn = document.getElementById('favorito-btn');
         const videoContainer = document.getElementById('video-container');
         const controls = document.getElementById('custom-controls');
@@ -466,13 +910,27 @@
         const leftIndicator = document.getElementById('double-tap-left');
         const rightIndicator = document.getElementById('double-tap-right');
         
-        // 🎛️ ELEMENTOS DA BARRA DE VOLUME NA HUD
+        // Elementos do slider de volume
         const volumeHudContainer = document.getElementById('volume-hud-container');
         const volumeSliderTrack = document.getElementById('volume-slider-track');
         const volumeSliderFill = document.getElementById('volume-slider-fill');
         const volumeSliderHandle = document.getElementById('volume-slider-handle');
         
-        // ===== NOVOS ELEMENTOS DO MENU DE EPISÓDIOS =====
+        // Elementos da contagem regressiva
+        const countdownOverlay = document.getElementById('countdown-overlay');
+        const countdownTimer = document.getElementById('countdown-timer');
+        const continueBtn = document.getElementById('continue-btn');
+        const nextEpisodeBtn = document.getElementById('next-episode-btn');
+        const cancelCountdownBtn = document.getElementById('cancel-countdown-btn');
+        const manualNextEpisodeBtn = document.getElementById('manual-next-episode-btn');
+        
+        // Elementos dos cards de próximo episódio
+        const nextEpisodeOverlay = document.getElementById('next-episode-overlay');
+        const overlayNextBtn = document.getElementById('overlay-next-episode-btn');
+        const belowNextBtn = document.getElementById('below-next-episode-btn');
+        const closeOverlayBtn = document.getElementById('close-overlay-btn');
+        
+        // Elementos do menu de episódios
         const episodeSidebar = document.getElementById('episode-sidebar');
         const episodeSidebarToggle = document.getElementById('episode-sidebar-toggle');
         const episodeSidebarClose = document.getElementById('episode-sidebar-close');
@@ -489,45 +947,58 @@
         let controlsVisible = false;
         let doubleTapHandled = false;
         let lastTapTime = 0;
+        
+        // Variáveis da contagem regressiva e card
+        let countdownInterval = null;
+        let isCountdownActive = false;
+        let countdownRemaining = 10;
+        let autoNextTimeout = null;
+        let hideCardTimeout = null;
+        let cardClosed = false;  // Indica se o usuário fechou o card flutuante
 
-        // ✅ CONFIGURAÇÃO INICIAL DO ÁUDIO - CORRIGIDO
-        video.volume = 0.7; // Volume padrão 70%
-        video.muted = false; // Garante que não está muted
+        // Configuração inicial do áudio
+        video.volume = 0.7;
+        video.muted = false;
 
-        // 🎛️ Toggle Volume Slider (agora na HUD) + MOVIMENTA TEMPO
-        function toggleVolumeSlider() {
-            const isVisible = volumeHudContainer.classList.contains('show');
+        // ===== FUNÇÕES DO VOLUME =====
+        function showVolumeSlider() {
+            // Mostra o slider, com auto-ocultação após 3s
+            volumeHudContainer.classList.add('show');
+            controls.classList.add('volume-slider-visible');
+            showControls();
             
-            if (isVisible) {
-                // Esconde slider + volta tempo ao normal
-                volumeHudContainer.classList.remove('show');
-                controls.classList.remove('volume-slider-visible');
-                clearTimeout(volumeSliderTimeout);
-            } else {
-                // Mostra slider + DESLOCA TEMPO 120px à direita
-                volumeHudContainer.classList.add('show');
-                controls.classList.add('volume-slider-visible');
-                showControls(); // Garante que controles estão visíveis
-                
-                // Auto-hide após 3s
-                clearTimeout(volumeSliderTimeout);
-                volumeSliderTimeout = setTimeout(() => {
-                    if (!isVolumeDragging) {
-                        volumeHudContainer.classList.remove('show');
-                        controls.classList.remove('volume-slider-visible');
-                    }
-                }, 3000);
-            }
+            clearTimeout(volumeSliderTimeout);
+            volumeSliderTimeout = setTimeout(() => {
+                if (!isVolumeDragging) {
+                    hideVolumeSlider();
+                }
+            }, 3000);
         }
-
-        // 🎛️ Atualiza posição da barra de volume
+        
+        function hideVolumeSlider() {
+            volumeHudContainer.classList.remove('show');
+            controls.classList.remove('volume-slider-visible');
+            clearTimeout(volumeSliderTimeout);
+        }
+        
+        function toggleMute() {
+            if (video.muted) {
+                video.muted = false;
+                // Se estava mudo, restaura o volume anterior (se for zero, restaura 0.7)
+                if (video.volume === 0) video.volume = 0.7;
+            } else {
+                video.muted = true;
+            }
+            updateVolumeIcon();
+            updateVolumeSlider();
+        }
+        
         function updateVolumeSlider() {
             const volumePercent = video.muted || video.volume === 0 ? 0 : video.volume * 100;
             volumeSliderFill.style.width = volumePercent + '%';
             volumeSliderHandle.style.right = (100 - volumePercent) + '%';
         }
 
-        // 🎛️ Define volume pelo slider
         function setVolumeFromSlider(percent) {
             video.volume = percent;
             video.muted = percent === 0;
@@ -535,7 +1006,6 @@
             updateVolumeSlider();
         }
 
-        // 🎛️ Calcula volume do mouse/touch
         function getVolumeFromEvent(e) {
             const rect = volumeSliderTrack.getBoundingClientRect();
             const clientX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -543,7 +1013,137 @@
             return Math.max(0, Math.min(1, position));
         }
 
-        // Carregar progresso salvo
+        function updateVolumeIcon() {
+            if (video.muted || video.volume === 0) {
+                volumeBtn.innerHTML = '<i class="fas fa-volume-mute"></i>';
+            } else if (video.volume < 0.5) {
+                volumeBtn.innerHTML = '<i class="fas fa-volume-down"></i>';
+            } else {
+                volumeBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
+            }
+        }
+        
+        // ===== FUNÇÕES DO CARD FLUTUANTE =====
+        function showNextEpisodeCard() {
+            if (!nextEpisodeOverlay || !proximoEpisodioUrl || cardClosed) return;
+            clearTimeout(hideCardTimeout);
+            nextEpisodeOverlay.classList.add('show');
+            hideCardTimeout = setTimeout(() => {
+                hideNextEpisodeCard();
+            }, 5000);
+        }
+
+        function hideNextEpisodeCard() {
+            if (nextEpisodeOverlay) {
+                nextEpisodeOverlay.classList.remove('show');
+                clearTimeout(hideCardTimeout);
+            }
+        }
+
+        // ===== FUNÇÕES DA CONTAGEM REGRESSIVA =====
+        function startCountdown() {
+            if (!proximoEpisodioUrl || proximoEpisodioUrl === 'null' || isCountdownActive || cardClosed) return;
+            
+            isCountdownActive = true;
+            countdownRemaining = 10;
+            
+            countdownOverlay.classList.add('show');
+            showControls();
+            showNextEpisodeCard();
+            
+            function updateCountdownDisplay() {
+                const minutes = Math.floor(countdownRemaining / 60);
+                const seconds = countdownRemaining % 60;
+                countdownTimer.innerHTML = `<i class="fas fa-clock"></i> ${seconds.toString().padStart(2, '0')}s`;
+            }
+            
+            updateCountdownDisplay();
+            
+            clearInterval(countdownInterval);
+            countdownInterval = setInterval(() => {
+                countdownRemaining--;
+                updateCountdownDisplay();
+                
+                if (countdownRemaining <= 0) {
+                    clearInterval(countdownInterval);
+                    goToNextEpisode();
+                }
+            }, 1000);
+            
+            clearTimeout(autoNextTimeout);
+            autoNextTimeout = setTimeout(() => {
+                goToNextEpisode();
+            }, 10000);
+        }
+
+        function stopCountdown() {
+            isCountdownActive = false;
+            clearInterval(countdownInterval);
+            clearTimeout(autoNextTimeout);
+            countdownOverlay.classList.remove('show');
+            countdownRemaining = 10;
+        }
+
+        function goToNextEpisode() {
+            if (proximoEpisodioUrl && proximoEpisodioUrl !== 'null') {
+                window.location.href = proximoEpisodioUrl;
+            }
+        }
+
+        // Evento de fechar o card flutuante
+        if (closeOverlayBtn) {
+            closeOverlayBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                cardClosed = true;
+                hideNextEpisodeCard();
+                stopCountdown();
+            });
+        }
+
+        // Eventos da contagem regressiva
+        continueBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            stopCountdown();
+            video.play();
+            hideNextEpisodeCard();
+        });
+
+        nextEpisodeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            goToNextEpisode();
+        });
+
+        cancelCountdownBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            stopCountdown();
+            hideNextEpisodeCard();
+        });
+
+        // Eventos dos botões dos cards
+        if (overlayNextBtn) {
+            overlayNextBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                goToNextEpisode();
+            });
+        }
+        if (belowNextBtn) {
+            belowNextBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                goToNextEpisode();
+            });
+        }
+
+        function checkEndOfEpisode() {
+            if (canalTipo !== 'serie' || !video.duration) return;
+            if (cardClosed) return;
+            
+            const timeLeft = video.duration - video.currentTime;
+            if (timeLeft <= 10 && !isCountdownActive && video.currentTime > 30) {
+                startCountdown();
+            }
+        }
+
+        // ===== PROGRESSO =====
         fetch(`/progresso/${canalId}`)
             .then(res => res.json())
             .then(data => {
@@ -573,6 +1173,8 @@
             progressBar.style.width = percent + '%';
             progressHandle.style.left = percent + '%';
             timeDisplay.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+            
+            checkEndOfEpisode();
         }
 
         function formatTime(seconds) {
@@ -595,8 +1197,13 @@
         video.addEventListener('waiting', () => spinner.style.display = 'block');
         video.addEventListener('canplay', () => spinner.style.display = 'none');
         video.addEventListener('error', (e) => console.error('Erro no vídeo:', e));
+        video.addEventListener('ended', () => {
+            if (canalTipo === 'serie' && proximoEpisodioUrl && proximoEpisodioUrl !== 'null' && !cardClosed) {
+                startCountdown();
+            }
+        });
 
-        // SISTEMA DE CONTROLE DE VISIBILIDADE + CURSOR
+        // ===== CONTROLES DE VISIBILIDADE =====
         function showControls() {
             controls.classList.remove('suspended');
             controls.classList.add('active');
@@ -608,13 +1215,17 @@
             videoContainer.classList.add('controls-visible');
             videoContainer.classList.remove('cursor-hidden');
             
+            if (proximoEpisodioUrl && !isCountdownActive && !cardClosed) {
+                showNextEpisodeCard();
+            }
+            
             clearTimeout(hideControlsTimeout);
             const hideDelay = isMobile ? 4000 : 3000;
             hideControlsTimeout = setTimeout(hideControls, hideDelay);
         }
 
         function hideControls() {
-            if (!video.paused && !isSeeking && !volumeHudContainer.classList.contains('show')) {
+            if (!video.paused && !isSeeking && !volumeHudContainer.classList.contains('show') && !countdownOverlay.classList.contains('show')) {
                 controls.classList.remove('active');
                 controls.classList.remove('volume-slider-visible');
                 controls.classList.add('suspended');
@@ -623,10 +1234,14 @@
                 controlsVisible = false;
                 videoContainer.classList.remove('controls-visible');
                 videoContainer.classList.add('cursor-hidden');
+                
+                if (!isCountdownActive) {
+                    hideNextEpisodeCard();
+                }
             }
         }
 
-        // Função de play/pause
+        // ===== PLAY/PAUSE =====
         function togglePlay() {
             if (video.paused) {
                 const playPromise = video.play();
@@ -644,7 +1259,6 @@
             }
         }
 
-        // Botões de play (BLOQUEIA double-tap)
         function handlePlayButton(e) {
             e.preventDefault();
             e.stopImmediatePropagation();
@@ -657,19 +1271,16 @@
         bigPlayBtn.addEventListener('click', handlePlayButton);
         bigPlayBtn.addEventListener('touchend', handlePlayButton, { passive: false });
 
-        // 🔥 PRINCIPAIS INTERAÇÕES DO VÍDEO (SINGLE TAP)
+        // ===== INTERAÇÕES DO VÍDEO =====
         function handleVideoInteraction(e) {
-            // 🔒 BLOQUEIA COMPLETAMENTE se double-tap foi detectado
-            if (doubleTapHandled) {
+            if (doubleTapHandled || isCountdownActive) {
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 return false;
             }
             
-            // Ignora controles e progress
             if (e.target.closest('.control-btn') || e.target.closest('.progress-bar-container') || e.target.closest('.volume-hud-container')) return;
             
-            // Single tap com delay para double-tap
             clearTimeout(singleTapTimeout);
             singleTapTimeout = setTimeout(() => {
                 togglePlay();
@@ -680,7 +1291,7 @@
         videoContainer.addEventListener('click', handleVideoInteraction);
         videoContainer.addEventListener('touchend', handleVideoInteraction, { passive: false });
 
-        // 🔥 EVENTOS DE MOUSE - DESKTOP (CURSOR HIDE 1.5s)
+        // Mouse idle para cursor
         let mouseIdleTimer;
         videoContainer.addEventListener('mousemove', (e) => {
             showControls();
@@ -697,25 +1308,21 @@
             if (!video.paused && !isSeeking) hideControls();
         });
 
-        // 🔥 EVENTOS DE TOUCH - MOBILE (DOUBLE-TAP CORRIGIDO)
+        // ===== DOUBLE-TAP =====
         videoContainer.addEventListener('touchstart', (e) => {
             if (e.touches.length > 1) e.preventDefault();
             showControls();
         }, { passive: false });
 
-        // ✅ DOUBLE-TAP PERFEITO - NÃO PAUSA O VÍDEO!
         videoContainer.addEventListener('touchend', function(e) {
-            // Ignora controles/progress/volume HUD
-            if (e.target.closest('.control-btn') || e.target.closest('.progress-bar-container') || e.target.closest('.volume-hud-container')) {
+            if (e.target.closest('.control-btn') || e.target.closest('.progress-bar-container') || e.target.closest('.volume-hud-container') || countdownOverlay.classList.contains('show')) {
                 return;
             }
 
             const now = Date.now();
             const timeSinceLastTap = now - lastTapTime;
             
-            // Double-tap detectado (300ms window)
             if (timeSinceLastTap < 300 && timeSinceLastTap > 0) {
-                // 🔒 BLOQUEIA TUDO - DOUBLE-TAP PRIORITÁRIO
                 e.preventDefault();
                 e.stopImmediatePropagation();
                 
@@ -728,18 +1335,15 @@
                 const center = 0.5;
                 
                 if (tapX < center) {
-                    // ❌ ESQUERDA: -10s (NÃO PAUSA)
                     video.currentTime = Math.max(0, video.currentTime - 10);
                     showIndicator('left');
                 } else {
-                    // ➡️ DIREITA: +30s (NÃO PAUSA)
                     video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 30);
                     showIndicator('right');
                 }
                 
                 showControls();
                 
-                // 🔓 Libera após 500ms
                 setTimeout(() => {
                     doubleTapHandled = false;
                 }, 500);
@@ -751,31 +1355,41 @@
             lastTapTime = now;
         }, { passive: false });
 
-        // 🔊 VOLUME - COM SLIDER NA HUD
-        function toggleMute() {
-            if (video.muted) {
-                video.muted = false;
-            } else {
-                video.muted = true;
-            }
-            updateVolumeIcon();
-            updateVolumeSlider();
-        }
-
-        // 🎛️ EVENTOS DO BOTÃO DE VOLUME (MOSTRA SLIDER NA HUD)
+        // ===== VOLUME SLIDER (NOVO COMPORTAMENTO) =====
+        // Botão de volume: se slider visível, alterna mudo; senão, mostra slider.
         volumeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            toggleVolumeSlider(); // ✅ Toggle slider na HUD
+            if (volumeHudContainer.classList.contains('show')) {
+                toggleMute();
+                // Mantém slider visível, reinicia o timer de auto-ocultação
+                clearTimeout(volumeSliderTimeout);
+                volumeSliderTimeout = setTimeout(() => {
+                    if (!isVolumeDragging) {
+                        hideVolumeSlider();
+                    }
+                }, 3000);
+            } else {
+                showVolumeSlider();
+            }
             showControls();
         });
         
         volumeBtn.addEventListener('touchend', (e) => {
             e.stopPropagation();
-            toggleVolumeSlider(); // ✅ Toggle slider na HUD
+            if (volumeHudContainer.classList.contains('show')) {
+                toggleMute();
+                clearTimeout(volumeSliderTimeout);
+                volumeSliderTimeout = setTimeout(() => {
+                    if (!isVolumeDragging) {
+                        hideVolumeSlider();
+                    }
+                }, 3000);
+            } else {
+                showVolumeSlider();
+            }
             showControls();
         }, { passive: false });
 
-        // 🎛️ EVENTOS DO SLIDER DE VOLUME NA HUD
         function handleVolumeSliderStart(e) {
             e.stopPropagation();
             isVolumeDragging = true;
@@ -806,27 +1420,15 @@
         document.addEventListener('mouseup', handleVolumeSliderEnd);
         document.addEventListener('touchend', handleVolumeSliderEnd);
 
-        function updateVolumeIcon() {
-            if (video.muted || video.volume === 0) {
-                volumeBtn.innerHTML = '<i class="fas fa-volume-mute"></i>';
-            } else if (video.volume < 0.5) {
-                volumeBtn.innerHTML = '<i class="fas fa-volume-down"></i>';
-            } else {
-                volumeBtn.innerHTML = '<i class="fas fa-volume-up"></i>';
-            }
-        }
-
-        // Atualiza ícone e slider do volume sempre que muda
         video.addEventListener('volumechange', () => {
             updateVolumeIcon();
             updateVolumeSlider();
         });
         
-        // Inicializa o slider e ícone do volume
         updateVolumeIcon();
         updateVolumeSlider();
 
-        // Fullscreen
+        // ===== FULLSCREEN =====
         fullscreenBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             if (!document.fullscreenElement) {
@@ -846,15 +1448,19 @@
             }
         });
 
-        // Próximo episódio
-        {% if proximo_episodio %}
-        document.getElementById('next-episode-btn').addEventListener('click', (e) => {
-            e.stopPropagation();
-            window.location.href = "{{ url_for('play', id=proximo_episodio.id) }}";
-        });
-        {% endif %}
+        // ===== PRÓXIMO EPISÓDIO MANUAL =====
+        if (manualNextEpisodeBtn) {
+            manualNextEpisodeBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                goToNextEpisode();
+            });
+        }
 
-        // Barra de progresso
+        if (proximoEpisodioUrl && proximoEpisodioUrl !== 'null') {
+            manualNextEpisodeBtn.style.display = 'block';
+        }
+
+        // ===== BARRA DE PROGRESSO =====
         function handleProgressInteraction(e) {
             e.preventDefault();
             e.stopPropagation();
@@ -882,7 +1488,7 @@
             setTimeout(() => el.classList.remove('show'), 800);
         }
 
-        // Teclado
+        // ===== TECLADO =====
         document.addEventListener('keydown', function(e) {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             switch(e.key) {
@@ -903,7 +1509,8 @@
                     break;
                 case 'm': 
                     e.preventDefault(); 
-                    toggleVolumeSlider(); // ✅ Toggle slider HUD
+                    // Tecla M: mostra o slider (não alterna mute diretamente)
+                    showVolumeSlider();
                     showControls();
                     break;
                 case 'ArrowLeft': 
@@ -924,7 +1531,7 @@
                     video.muted = false;
                     updateVolumeIcon();
                     updateVolumeSlider();
-                    toggleVolumeSlider(); // ✅ Mostra slider HUD
+                    showVolumeSlider();   // apenas mostra o slider, não alterna
                     showControls();
                     break;
                 case 'ArrowDown': 
@@ -933,16 +1540,15 @@
                     video.muted = false;
                     updateVolumeIcon();
                     updateVolumeSlider();
-                    toggleVolumeSlider(); // ✅ Mostra slider HUD
+                    showVolumeSlider();   // apenas mostra o slider, não alterna
                     showControls();
                     break;
             }
         });
 
-        // Estado inicial
         showControls();
 
-        // FAVORITOS (INTACTO)
+        // ===== FAVORITOS =====
         fetch('/api/favoritos')
             .then(res => res.json())
             .then(favoritos => {
@@ -960,7 +1566,7 @@
 
         window.addEventListener('beforeunload', () => salvarProgresso(true));
 
-        // ===== NOVO: CARREGAR EPISÓDIOS PARA O MENU LATERAL =====
+        // ===== MENU DE EPISÓDIOS =====
         {% if canal.tipo == 'serie' %}
         const serieNome = "{{ canal.serie_nome }}";
         const currentTemporada = {{ canal.temporada }};
@@ -970,7 +1576,6 @@
             fetch(`/api/serie/${encodeURIComponent(serieNome)}/episodios`)
                 .then(res => res.json())
                 .then(episodios => {
-                    // Agrupa por temporada
                     const temporadas = {};
                     episodios.forEach(ep => {
                         if (!temporadas[ep.temporada]) {
@@ -979,7 +1584,6 @@
                         temporadas[ep.temporada].push(ep);
                     });
 
-                    // Ordena temporadas
                     const temporadasOrdenadas = Object.keys(temporadas).sort((a,b) => a - b);
 
                     let html = '';
@@ -1012,7 +1616,6 @@
                     });
                     episodeSidebarContent.innerHTML = html;
 
-                    // Adiciona evento de clique nos episódios (para redirecionar)
                     document.querySelectorAll('.episodio-item').forEach(item => {
                         item.addEventListener('click', function(e) {
                             if (e.target.tagName === 'A') return;
@@ -1026,14 +1629,12 @@
                 });
         }
 
-        // Função global para toggle das temporadas
         window.toggleTemporada = function(header) {
             const list = header.nextElementSibling;
             list.classList.toggle('show');
             header.classList.toggle('active');
         };
 
-        // Controles da sidebar
         if (episodeSidebarToggle) {
             episodeSidebarToggle.addEventListener('click', () => {
                 episodeSidebar.classList.add('open');
@@ -1045,7 +1646,6 @@
             });
         }
 
-        // Carrega episódios
         carregarEpisodios();
         {% endif %}
     });
