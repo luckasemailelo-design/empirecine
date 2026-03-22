@@ -187,57 +187,51 @@
         }
 
         @media (max-width: 768px) {
-    .auth-wrapper {
-        max-width: 350px;   /* 🔴 estreita só no mobile */
-    }
+            .auth-wrapper {
+                max-width: 350px;
+                /* 🔴 estreita só no mobile */
+            }
 
-    .auth-container {
-        max-width: 100%;
-    }
-}
+            .auth-container {
+                max-width: 100%;
+            }
+        }
     </style>
 </head>
 
 <body>
-
     <div class="auth-wrapper">
-
         <div class="auth-container">
             <div class="auth-card">
                 <h1>
                     <span class="empire">
-                        <img src="/static/uploads/bobina.png" class="imgp">
-                        EMPIRE
-                    </span>
+                        <img src="/static/uploads/bobina.png" alt="icone" class="imgp">EMPIRE</span>
                     <span class="cine">CINE</span>
                 </h1>
-
                 <h2 class="login">LOGIN</h2>
-
-                <form>
+                {% if erro %}
+                <div class="alert error">{{ erro }}</div>
+                {% endif %}
+                <form method="POST" class="auth-form">
                     <div class="form-group">
-                        <label>Email</label>
-                        <input type="email" placeholder="seu@email.com">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" required placeholder="seu@email.com">
                     </div>
-
                     <div class="form-group">
-                        <label>Senha</label>
-                        <input type="password" placeholder="••••••••">
+                        <label for="senha">Senha</label>
+                        <input type="password" id="senha" name="senha" required placeholder="••••••••">
                     </div>
-
-                    <button class="btn">Entrar</button>
+                    <button type="submit" class="btn">Entrar</button>
                 </form>
             </div>
         </div>
-
-        <!-- ANIMAÇÃO APENAS NO CELULAR -->
-        <div class="loading mobile-only">
+        <!-- From Uiverse.io by milley69 -->
+        <div class="loading">
             <svg width="64px" height="48px">
                 <polyline points="0.157 23.954, 14 23.954, 21.843 48, 43 0, 50 24, 64 24" id="back"></polyline>
                 <polyline points="0.157 23.954, 14 23.954, 21.843 48, 43 0, 50 24, 64 24" id="front"></polyline>
             </svg>
         </div>
-
     </div>
 
 </body>
