@@ -1431,22 +1431,74 @@
         // ===== FULLSCREEN =====
         fullscreenBtn.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (!document.fullscreenElement) {
-                videoContainer.requestFullscreen();
-                if (isMobile && screen.orientation && screen.orientation.lock) {
-                    screen.orientation.lock('landscape').catch(()=>{});
-                }
-            } else {
-                document.exitFullscreen();
-            }
+            toggleFullscreen();
             showControls();
         });
 
-        document.addEventListener('fullscreenchange', () => {
-            if (!document.fullscreenElement && isMobile && screen.orientation && screen.orientation.unlock) {
-                screen.orientation.unlock();
+        function toggleFullscreen() {
+            const isCurrentlyFullscreen = !!document.fullscreenElement;
+            
+            if (!isCurrentlyFullscreen) {
+                // DETECTA IPHONE/iOS
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+                
+                if (isIOS) {
+                    // IPHONE: usa webkitEnterFullscreen do VIDEO (tela cheia nativa)
+                    if (video.webkitEnterFullscreen) {
+                        video.webkitEnterFullscreen();
+                    } else {
+                        // Fallback: força landscape + maximiza container
+                        if (screen.orientation && screen.orientation.lock) {
+                            screen.orientation.lock('landscape').catch(() => {});
+                        }
+                        videoContainer.style.position = 'fixed';
+                        videoContainer.style.top = '0';
+                        videoContainer.style.left = '0';
+                        videoContainer.style.width = '100vw';
+                        videoContainer.style.height = '100vh';
+                        videoContainer.style.zIndex = '9999';
+                        document.body.style.overflow = 'hidden';
+                    }
+                } else {
+                    // ANDROID/OUTROS: usa requestFullscreen normal
+                    videoContainer.requestFullscreen().catch(() => {
+                        // Fallback se fullscreen falhar
+                        if (screen.orientation && screen.orientation.lock) {
+                            screen.orientation.lock('landscape').catch(() => {});
+                        }
+                    });
+                }
+                
+                fullscreenBtn.innerHTML = '<i class="fas fa-compress"></i>';
+            } else {
+                exitFullscreen();
             }
-        });
+        }
+
+        function exitFullscreen() {
+            const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+            
+            if (isIOS && video.webkitExitFullscreen) {
+                video.webkitExitFullscreen();
+            } else {
+                if (document.exitFullscreen) {
+                    document.exitFullscreen();
+                }
+                if (screen.orientation && screen.orientation.unlock) {
+                    screen.orientation.unlock();
+                }
+                // Restaura container se estava no fallback
+                videoContainer.style.position = '';
+                videoContainer.style.top = '';
+                videoContainer.style.left = '';
+                videoContainer.style.width = '';
+                videoContainer.style.height = '';
+                videoContainer.style.zIndex = '';
+                document.body.style.overflow = '';
+            }
+            
+            fullscreenBtn.innerHTML = '<i class="fas fa-expand"></i>';
+        }
 
         // ===== PRÓXIMO EPISÓDIO MANUAL =====
         if (manualNextEpisodeBtn) {
