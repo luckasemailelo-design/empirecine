@@ -903,9 +903,21 @@ def api_series_categorias_destaque():
     destaques = CategoriaDestaque.query.filter_by(tipo='serie').order_by(CategoriaDestaque.posicao).all()
     resultado = []
     for d in destaques:
-        itens = Canal.query.filter_by(tipo='serie', categoria=d.categoria).filter(
-            Canal.ativo == True, Canal.categoria != 'Adultos'
-        ).limit(15).all()
+        # Subquery to get one id per serie_nome for this category
+        subquery = db.session.query(
+            Canal.serie_nome,
+            func.min(Canal.id).label('id')
+        ).filter(
+            Canal.tipo == 'serie',
+            Canal.categoria == d.categoria,
+            Canal.ativo == True,
+            Canal.categoria != 'Adultos'
+        ).group_by(Canal.serie_nome).limit(15).subquery()
+        
+        itens = db.session.query(Canal).join(
+            subquery, Canal.id == subquery.c.id
+        ).all()
+        
         resultado.append({
             'titulo': d.categoria,
             'itens': [c.serialize() for c in itens]
