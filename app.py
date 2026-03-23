@@ -262,42 +262,6 @@ def index():
     db.session.commit()
     return render_template('index.html')
 
-@app.route('/login', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        email = request.form['email']
-        senha = request.form['senha']
-        usuario = Usuario.query.filter_by(email=email).first()
-        if usuario and check_password_hash(usuario.senha, senha):
-            if not usuario.ativo:
-                return render_template('login.html', erro='Conta desativada. Contate o administrador.')
-            if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
-                return render_template('login.html', erro='Conta expirada. Contate o administrador.')
-
-            # Controle de sessão única: só permitir novo login se não for admin e não houver sessão ativa
-            if not usuario.is_admin:
-                sessao_existente = SessaoAtiva.query.filter_by(usuario_id=usuario.id).first()
-                if sessao_existente:
-                    return render_template('login.html', erro='Você já está logado em outro dispositivo. Faça logout antes de tentar novamente.')
-
-            # Gera token de sessão
-            token = gerar_token_sessao()
-
-            # Armazena no banco
-            sessao = SessaoAtiva(usuario_id=usuario.id, token=token)
-            db.session.add(sessao)
-            db.session.commit()
-
-            # Salva na sessão Flask
-            session['usuario_id'] = usuario.id
-            session['token_sessao'] = token
-
-            usuario.ultimo_acesso = datetime.utcnow()
-            db.session.commit()
-            return redirect(url_for('index'))
-        return render_template('login.html', erro='Email ou senha inválidos')
-    return render_template('login.html')
-
 @app.route('/register', methods=['GET', 'POST'])
 @admin_required
 def register():
@@ -335,8 +299,27 @@ def register():
         return redirect(url_for('admin'))
     return redirect(url_for('admin'))
 
+# Adicione esta rota (se já não existir)
+@app.route('/api/check-session')
+def check_session():
+    """Verifica se o usuário atual tem uma sessão ativa."""
+    if 'usuario_id' in session and 'token_sessao' in session:
+        usuario = Usuario.query.get(session['usuario_id'])
+        if usuario and not usuario.is_admin:
+            # Verifica se a sessão ainda existe no banco
+            sessao = SessaoAtiva.query.filter_by(usuario_id=usuario.id, token=session['token_sessao']).first()
+            if sessao:
+                return jsonify({'logged_in': True})
+            else:
+                return jsonify({'logged_in': False}), 401
+        elif usuario and usuario.is_admin:
+            # Admin sempre tem sessão ativa (sem controle)
+            return jsonify({'logged_in': True})
+    return jsonify({'logged_in': False}), 401
+
 @app.route('/logout')
 def logout():
+    """Remove a sessão ativa do banco e limpa a sessão Flask."""
     if 'usuario_id' in session and 'token_sessao' in session:
         SessaoAtiva.query.filter_by(
             usuario_id=session['usuario_id'],
@@ -345,6 +328,41 @@ def logout():
         db.session.commit()
     session.clear()
     return redirect(url_for('login'))
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        email = request.form['email']
+        senha = request.form['senha']
+        usuario = Usuario.query.filter_by(email=email).first()
+        if usuario and check_password_hash(usuario.senha, senha):
+            if not usuario.ativo:
+                return render_template('login.html', erro='Conta desativada. Contate o administrador.')
+            if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
+                return render_template('login.html', erro='Conta expirada. Contate o administrador.')
+
+            # Se o usuário não é admin, remove qualquer sessão existente antes de criar uma nova
+            if not usuario.is_admin:
+                SessaoAtiva.query.filter_by(usuario_id=usuario.id).delete()
+                db.session.commit()
+
+            # Gera token de sessão
+            token = gerar_token_sessao()
+
+            # Armazena no banco
+            sessao = SessaoAtiva(usuario_id=usuario.id, token=token)
+            db.session.add(sessao)
+            db.session.commit()
+
+            # Salva na sessão Flask
+            session['usuario_id'] = usuario.id
+            session['token_sessao'] = token
+
+            usuario.ultimo_acesso = datetime.utcnow()
+            db.session.commit()
+            return redirect(url_for('index'))
+        return render_template('login.html', erro='Email ou senha inválidos')
+    return render_template('login.html')
 
 # ---------- Demais rotas (não alteradas) ----------
 # Inclua aqui todas as rotas restantes do seu código original
@@ -1411,7 +1429,7 @@ def criar_admin_padrao():
         )
         db.session.add(admin)
         db.session.commit()
-        logger.info("Usuário admin padrão criado: empire@empirecine.com / admin")
+        logger.info("Usuário admin padrão criado: empire@empirecine.com / Nuttertools08.")
     else:
         logger.info("Usuário admin padrão já existe.")
 
