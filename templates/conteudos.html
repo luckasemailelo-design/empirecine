@@ -7,29 +7,26 @@
     <!-- Botões de ação -->
     <div class="admin-actions">
         <button class="btn" id="btn-add-filme"><i class="fas fa-plus"></i> Adicionar Filme</button>
-        <button class="btn" id="btn-add-serie"><i class="fas fa-plus"></i> Adicionar Série (Episódio)</button>
+        <button class="btn" id="btn-add-serie"><i class="fas fa-plus"></i> Adicionar Episódio</button>
         <div class="search-wrapper">
             <input type="text" id="search-conteudo" class="search-input" placeholder="Pesquisar conteúdo...">
             <button class="search-btn" id="btn-pesquisar">Pesquisar</button>
         </div>
     </div>
 
-    <!-- Lista de conteúdos -->
+    <!-- Tabela de conteúdos -->
     <div class="table-responsive">
-        <table class="tabela-usuarios">
+        <table class="tabela-usuarios" id="tabela-conteudos">
             <thead>
-                <tr>
                     <th>Nome</th>
                     <th>Tipo</th>
                     <th>Categoria</th>
                     <th>Status</th>
                     <th>Ações</th>
-                </tr>
             </thead>
             <tbody id="conteudos-list">
                 <!-- Preenchido via JS -->
             </tbody>
-        </table>
     </div>
     <div class="load-more-container">
         <button id="load-more" class="btn btn-outline" style="display: none;">Carregar Mais</button>
@@ -127,15 +124,55 @@
         </div>
     </div>
 </div>
+
+<!-- Modal para editar série (sinopse geral, etc) -->
+<div id="modal-editar-serie" style="display: none;">
+    <div class="modal-overlay">
+        <div class="auth-card modal-card">
+            <h2>Editar Série</h2>
+            <form id="form-editar-serie" class="auth-form">
+                <input type="hidden" id="edit-serie-nome">
+                <div class="form-group">
+                    <label for="edit-serie-nome-exib">Nome da Série</label>
+                    <input type="text" id="edit-serie-nome-exib" disabled>
+                </div>
+                <div class="form-group">
+                    <label for="edit-serie-logo">URL da Logo</label>
+                    <input type="url" id="edit-serie-logo">
+                </div>
+                <div class="form-group">
+                    <label for="edit-serie-categoria">Categoria</label>
+                    <input type="text" id="edit-serie-categoria">
+                </div>
+                <div class="form-group">
+                    <label for="edit-serie-ano">Ano de Lançamento</label>
+                    <input type="text" id="edit-serie-ano">
+                </div>
+                <div class="form-group">
+                    <label for="edit-serie-sinopse">Sinopse Geral da Série</label>
+                    <textarea id="edit-serie-sinopse" rows="5"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn">Salvar</button>
+                    <button type="button" class="btn btn-outline" id="cancelar-editar-serie">Cancelar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
     let currentPage = 1;
     let currentBusca = '';
+    let allItems = [];
+    let expandedSeries = new Set();
+    let expandedSeasons = {};
 
     function carregarConteudos(pagina) {
-        let url = `/api/admin/conteudos?pagina=${pagina}`;
+        let url = `/api/admin/conteudos?pagina=${pagina}&por_pagina=50`;
         if (currentBusca) {
             url += `&busca=${encodeURIComponent(currentBusca)}`;
         }
@@ -145,25 +182,12 @@
                 return res.json();
             })
             .then(data => {
-                const tbody = document.getElementById('conteudos-list');
-                if (pagina === 1) tbody.innerHTML = '';
-                data.itens.forEach(item => {
-                    const tr = document.createElement('tr');
-                    const statusClass = item.ativo ? '' : 'expirado';
-                    const statusText = item.ativo ? 'Ativo' : 'Oculto';
-                    tr.innerHTML = `
-                        <td>${item.nome}</td>
-                        <td>${item.tipo}</td>
-                        <td>${item.categoria || '-'}</td>
-                        <td class="${statusClass}">${statusText}</td>
-                        <td class="acoes">
-                            <button class="btn-acao editar" onclick="editarConteudo(${item.id})" title="Editar"><i class="fas fa-edit"></i></button>
-                            <button class="btn-acao banir" onclick="toggleAtivo(${item.id}, ${item.ativo})" title="${item.ativo ? 'Ocultar' : 'Mostrar'}"><i class="fas fa-${item.ativo ? 'eye-slash' : 'eye'}"></i></button>
-                            <button class="btn-acao excluir" onclick="excluirConteudo(${item.id})" title="Excluir"><i class="fas fa-trash"></i></button>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
+                if (pagina === 1) {
+                    allItems = [];
+                    document.getElementById('conteudos-list').innerHTML = '';
+                }
+                allItems = allItems.concat(data.itens);
+                renderTabela(allItems);
                 const btn = document.getElementById('load-more');
                 if (data.pagina < data.total_paginas) {
                     btn.style.display = 'block';
@@ -178,22 +202,190 @@
             });
     }
 
+    function renderTabela(itens) {
+        const filmes = itens.filter(i => i.tipo === 'filme');
+        const episodios = itens.filter(i => i.tipo === 'serie' && i.serie_nome);
+        const seriesMap = new Map();
+        
+        episodios.forEach(ep => {
+            const nomeSerie = ep.serie_nome;
+            if (!seriesMap.has(nomeSerie)) {
+                seriesMap.set(nomeSerie, {
+                    info: {
+                        nome: nomeSerie,
+                        logo: ep.logo,
+                        categoria: ep.categoria,
+                        ano_lancamento: ep.ano_lancamento,
+                        ativo: ep.ativo,
+                        sinopse_geral: ep.sinopse_geral || ''
+                    },
+                    episodios: []
+                });
+            }
+            seriesMap.get(nomeSerie).episodios.push(ep);
+        });
+
+        const tbody = document.getElementById('conteudos-list');
+        tbody.innerHTML = '';
+
+        // Filmes
+        filmes.forEach(filme => {
+            const row = criarLinhaFilme(filme);
+            tbody.appendChild(row);
+        });
+
+        // Séries
+        for (let [nomeSerie, serieData] of seriesMap) {
+            const serie = serieData.info;
+            const episodiosList = serieData.episodios;
+            const serieId = 'serie_' + nomeSerie.replace(/[^a-zA-Z0-9]/g, '_');
+            const row = criarLinhaSerie(serie, episodiosList, serieId);
+            tbody.appendChild(row);
+            if (expandedSeries.has(nomeSerie)) {
+                const detalheRow = criarLinhaDetalheSerie(serie, episodiosList, serieId);
+                tbody.appendChild(detalheRow);
+            }
+        }
+
+        if (filmes.length === 0 && seriesMap.size === 0) {
+            const emptyRow = document.createElement('tr');
+            emptyRow.innerHTML = `<td colspan="5" style="text-align: center;">Nenhum conteúdo encontrado.`;
+            tbody.appendChild(emptyRow);
+        }
+    }
+
+    function criarLinhaFilme(filme) {
+        const tr = document.createElement('tr');
+        const statusClass = filme.ativo ? '' : 'expirado';
+        const statusText = filme.ativo ? 'Ativo' : 'Oculto';
+        tr.innerHTML = `
+             <td>${escapeHtml(filme.nome)}</td>
+             <td>Filme</td>
+             <td>${escapeHtml(filme.categoria || '-')}</td>
+            <td class="${statusClass}">${statusText}</td>
+            <td class="acoes">
+                <button class="btn-acao editar" onclick="editarFilme(${filme.id})" title="Editar"><i class="fas fa-edit"></i></button>
+                <button class="btn-acao banir" onclick="toggleAtivo(${filme.id}, ${filme.ativo})" title="${filme.ativo ? 'Ocultar' : 'Mostrar'}"><i class="fas fa-${filme.ativo ? 'eye-slash' : 'eye'}"></i></button>
+                <button class="btn-acao excluir" onclick="excluirConteudo(${filme.id})" title="Excluir"><i class="fas fa-trash"></i></button>
+             </td>
+        `;
+        return tr;
+    }
+
+    function criarLinhaSerie(serie, episodios, serieId) {
+        const tr = document.createElement('tr');
+        const statusClass = serie.ativo ? '' : 'expirado';
+        const statusText = serie.ativo ? 'Ativo' : 'Oculto';
+        const isExpanded = expandedSeries.has(serie.nome);
+        tr.setAttribute('data-serie-id', serieId);
+        tr.innerHTML = `
+             <td>
+                <i class="fas fa-chevron-${isExpanded ? 'up' : 'down'}" style="cursor: pointer; margin-right: 8px;" onclick="toggleSerie('${escapeHtml(serie.nome)}', '${serieId}')"></i>
+                ${escapeHtml(serie.nome)}
+             </td>
+             <td>Série</td>
+             <td>${escapeHtml(serie.categoria || '-')}</td>
+            <td class="${statusClass}">${statusText}</td>
+            <td class="acoes">
+                <button class="btn-acao editar" onclick="editarSerie('${escapeHtml(serie.nome)}')" title="Editar Série"><i class="fas fa-edit"></i> Editar Série</button>
+                <button class="btn-acao banir" onclick="toggleSerieAtiva('${escapeHtml(serie.nome)}', ${serie.ativo})" title="${serie.ativo ? 'Ocultar série' : 'Mostrar série'}"><i class="fas fa-${serie.ativo ? 'eye-slash' : 'eye'}"></i></button>
+                <button class="btn-acao excluir" onclick="excluirSerie('${escapeHtml(serie.nome)}')" title="Excluir todos os episódios"><i class="fas fa-trash"></i></button>
+             </td>
+        `;
+        return tr;
+    }
+
+    function criarLinhaDetalheSerie(serie, episodios, serieId) {
+        const tr = document.createElement('tr');
+        tr.classList.add('detalhe-serie');
+        tr.setAttribute('data-serie', serieId);
+        tr.innerHTML = `<td colspan="5" style="padding: 0; background: #111;">
+            <div style="padding: 1rem;">
+                <h4>Episódios</h4>
+                <div id="episodios-${serieId}"></div>
+            </div>
+         </td>`;
+        const container = tr.querySelector(`#episodios-${serieId}`);
+        if (container) {
+            renderEpisodios(container, episodios, serieId);
+        }
+        return tr;
+    }
+
+    function renderEpisodios(container, episodios, serieId) {
+        const temporadas = new Map();
+        episodios.forEach(ep => {
+            let temp = ep.temporada;
+            if (temp === null || temp === undefined) return;
+            if (!temporadas.has(temp)) temporadas.set(temp, []);
+            temporadas.get(temp).push(ep);
+        });
+
+        // Ordenar temporadas do menor para o maior (1,2,3...)
+        const temporadasOrdenadas = Array.from(temporadas.keys()).sort((a,b)=>a-b);
+        if (temporadasOrdenadas.length === 0) {
+            container.innerHTML = '<p>Nenhum episódio encontrado.</p>';
+            return;
+        }
+
+        if (!expandedSeasons[serieId]) expandedSeasons[serieId] = {};
+
+        let html = '';
+        temporadasOrdenadas.forEach(temp => {
+            const isExpanded = expandedSeasons[serieId][temp] === true;
+            // Ordenar episódios dentro da temporada do menor para o maior
+            const eps = temporadas.get(temp).sort((a,b)=>a.episodio - b.episodio);
+            html += `
+                <div class="season-container">
+                    <div class="season-header" onclick="toggleSeason('${serieId}', ${temp})">
+                        <i class="fas fa-chevron-${isExpanded ? 'up' : 'down'}"></i>
+                        <span>Temporada ${temp}</span>
+                    </div>
+                    <ul class="episodios-list" style="display: ${isExpanded ? 'block' : 'none'};">`;
+            eps.forEach(ep => {
+                const statusText = ep.ativo ? '' : ' (Oculto)';
+                html += `<li>
+                            <strong>${escapeHtml(ep.nome)}</strong> (E${ep.episodio})${statusText}
+                            <div class="episodio-actions">
+                                <button class="btn-acao editar" onclick="editarEpisodio(${ep.id})" title="Editar"><i class="fas fa-edit"></i></button>
+                                <button class="btn-acao banir" onclick="toggleAtivo(${ep.id}, ${ep.ativo})" title="${ep.ativo ? 'Ocultar' : 'Mostrar'}"><i class="fas fa-${ep.ativo ? 'eye-slash' : 'eye'}"></i></button>
+                                <button class="btn-acao excluir" onclick="excluirConteudo(${ep.id})" title="Excluir"><i class="fas fa-trash"></i></button>
+                            </div>
+                          </li>`;
+            });
+            html += `</ul></div>`;
+        });
+        container.innerHTML = html;
+    }
+
+    window.toggleSerie = function(nomeSerie, serieId) {
+        if (expandedSeries.has(nomeSerie)) {
+            expandedSeries.delete(nomeSerie);
+        } else {
+            expandedSeries.add(nomeSerie);
+        }
+        renderTabela(allItems);
+    };
+
+    window.toggleSeason = function(serieId, seasonNumber) {
+        if (!expandedSeasons[serieId]) expandedSeasons[serieId] = {};
+        expandedSeasons[serieId][seasonNumber] = !expandedSeasons[serieId][seasonNumber];
+        renderTabela(allItems);
+    };
+
+    // Funções de ação (mantidas)
     window.toggleAtivo = function(id, ativo) {
         if (!confirm(`Deseja ${ativo ? 'ocultar' : 'mostrar'} este conteúdo?`)) return;
         fetch(`/api/admin/conteudos/${id}/toggle-ativo`, { method: 'POST' })
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'ok') {
-                    alert('Status alterado com sucesso.');
                     carregarConteudos(1);
                 } else {
                     alert('Erro: ' + (data.erro || 'desconhecido'));
                 }
             })
-            .catch(err => {
-                console.error('Erro ao alterar status:', err);
-                alert('Erro de rede ao alterar status.');
-            });
+            .catch(err => alert('Erro de rede: ' + err.message));
     };
 
     window.excluirConteudo = function(id) {
@@ -202,59 +394,95 @@
             .then(res => res.json())
             .then(data => {
                 if (data.status === 'ok') {
-                    alert('Conteúdo excluído.');
                     carregarConteudos(1);
                 } else {
                     alert('Erro: ' + (data.erro || 'desconhecido'));
                 }
             })
-            .catch(err => {
-                console.error('Erro ao excluir:', err);
-                alert('Erro de rede ao excluir.');
-            });
+            .catch(err => alert('Erro de rede: ' + err.message));
     };
 
-    window.editarConteudo = function(id) {
+    window.editarFilme = function(id) {
         fetch(`/api/admin/conteudos/${id}`)
-            .then(res => {
-                if (!res.ok) throw new Error('Erro ao buscar dados');
-                return res.json();
-            })
+            .then(res => res.json())
             .then(item => {
-                if (item.tipo === 'filme') {
-                    document.getElementById('filme-id').value = item.id;
-                    document.getElementById('filme-nome').value = item.nome || '';
-                    document.getElementById('filme-logo').value = item.logo || '';
-                    document.getElementById('filme-categoria').value = item.categoria || '';
-                    document.getElementById('filme-ano').value = item.ano_lancamento || '';
-                    document.getElementById('filme-url').value = item.url || '';
-                    document.getElementById('filme-sinopse').value = item.sinopse_geral || '';
-                    document.getElementById('modal-filme-titulo').textContent = 'Editar Filme';
-                    document.getElementById('modal-filme').style.display = 'block';
-                } else if (item.tipo === 'serie' && item.temporada !== null) {
-                    document.getElementById('serie-id').value = item.id;
-                    document.getElementById('serie-nome').value = item.nome || '';
-                    document.getElementById('serie-serie-nome').value = item.serie_nome || '';
-                    document.getElementById('serie-temporada').value = item.temporada;
-                    document.getElementById('serie-episodio').value = item.episodio;
-                    document.getElementById('serie-logo').value = item.logo || '';
-                    document.getElementById('serie-categoria').value = item.categoria || '';
-                    document.getElementById('serie-ano').value = item.ano_lancamento || '';
-                    document.getElementById('serie-url').value = item.url || '';
-                    document.getElementById('serie-sinopse').value = item.sinopse_episodio || '';
-                    document.getElementById('modal-serie-titulo').textContent = 'Editar Episódio';
-                    document.getElementById('modal-serie').style.display = 'block';
+                document.getElementById('filme-id').value = item.id;
+                document.getElementById('filme-nome').value = item.nome || '';
+                document.getElementById('filme-logo').value = item.logo || '';
+                document.getElementById('filme-categoria').value = item.categoria || '';
+                document.getElementById('filme-ano').value = item.ano_lancamento || '';
+                document.getElementById('filme-url').value = item.url || '';
+                document.getElementById('filme-sinopse').value = item.sinopse_geral || '';
+                document.getElementById('modal-filme-titulo').textContent = 'Editar Filme';
+                document.getElementById('modal-filme').style.display = 'block';
+            })
+            .catch(err => alert('Erro ao carregar dados: ' + err.message));
+    };
+
+    window.editarEpisodio = function(id) {
+        fetch(`/api/admin/conteudos/${id}`)
+            .then(res => res.json())
+            .then(ep => {
+                document.getElementById('serie-id').value = ep.id;
+                document.getElementById('serie-nome').value = ep.nome || '';
+                document.getElementById('serie-serie-nome').value = ep.serie_nome || '';
+                document.getElementById('serie-temporada').value = ep.temporada || 1;
+                document.getElementById('serie-episodio').value = ep.episodio || 1;
+                document.getElementById('serie-logo').value = ep.logo || '';
+                document.getElementById('serie-categoria').value = ep.categoria || '';
+                document.getElementById('serie-ano').value = ep.ano_lancamento || '';
+                document.getElementById('serie-url').value = ep.url || '';
+                document.getElementById('serie-sinopse').value = ep.sinopse_episodio || '';
+                document.getElementById('modal-serie-titulo').textContent = 'Editar Episódio';
+                document.getElementById('modal-serie').style.display = 'block';
+            })
+            .catch(err => alert('Erro ao carregar episódio: ' + err.message));
+    };
+
+    window.editarSerie = function(nomeSerie) {
+        fetch(`/api/admin/serie/${encodeURIComponent(nomeSerie)}`)
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('edit-serie-nome').value = nomeSerie;
+                document.getElementById('edit-serie-nome-exib').value = nomeSerie;
+                document.getElementById('edit-serie-logo').value = data.logo || '';
+                document.getElementById('edit-serie-categoria').value = data.categoria || '';
+                document.getElementById('edit-serie-ano').value = data.ano_lancamento || '';
+                document.getElementById('edit-serie-sinopse').value = data.sinopse_geral || '';
+                document.getElementById('modal-editar-serie').style.display = 'block';
+            })
+            .catch(err => alert('Erro ao carregar dados da série: ' + err.message));
+    };
+
+    window.toggleSerieAtiva = function(nomeSerie, ativo) {
+        if (!confirm(`Deseja ${ativo ? 'ocultar' : 'mostrar'} todos os episódios desta série?`)) return;
+        fetch(`/api/admin/serie/${encodeURIComponent(nomeSerie)}/toggle-ativo`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    carregarConteudos(1);
                 } else {
-                    alert('Tipo não suportado para edição direta.');
+                    alert('Erro: ' + (data.erro || 'desconhecido'));
                 }
             })
-            .catch(err => {
-                console.error('Erro ao carregar dados do conteúdo:', err);
-                alert('Erro ao carregar dados do conteúdo.');
-            });
+            .catch(err => alert('Erro de rede: ' + err.message));
     };
 
-    // Eventos de submissão
+    window.excluirSerie = function(nomeSerie) {
+        if (!confirm(`Tem certeza que deseja excluir TODOS os episódios da série "${nomeSerie}"? Esta ação é irreversível.`)) return;
+        fetch(`/api/admin/serie/${encodeURIComponent(nomeSerie)}/excluir`, { method: 'DELETE' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    carregarConteudos(1);
+                } else {
+                    alert('Erro: ' + (data.erro || 'desconhecido'));
+                }
+            })
+            .catch(err => alert('Erro de rede: ' + err.message));
+    };
+
+    // Submissão dos formulários
     document.getElementById('form-filme').addEventListener('submit', function(e) {
         e.preventDefault();
         const id = document.getElementById('filme-id').value;
@@ -272,25 +500,18 @@
             url = `/api/admin/conteudos/filme/${id}`;
             method = 'PUT';
         }
-        fetch(url, {
-            method: method,
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.status === 'ok') {
-                alert('Salvo com sucesso.');
-                document.getElementById('modal-filme').style.display = 'none';
-                carregarConteudos(1);
-            } else {
-                alert('Erro: ' + (data.erro || 'desconhecido'));
-            }
-        })
-        .catch(err => {
-            console.error('Erro na requisição:', err);
-            alert('Erro de rede ao salvar.');
-        });
+        fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Salvo com sucesso.');
+                    document.getElementById('modal-filme').style.display = 'none';
+                    carregarConteudos(1);
+                } else {
+                    alert('Erro: ' + (data.erro || 'desconhecido'));
+                }
+            })
+            .catch(err => alert('Erro de rede: ' + err.message));
     });
 
     document.getElementById('form-serie').addEventListener('submit', function(e) {
@@ -313,34 +534,51 @@
             url = `/api/admin/conteudos/serie/episodio/${id}`;
             method = 'PUT';
         }
-        fetch(url, {
-            method: method,
-            headers: {'Content-Type': 'application/json'},
+        fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Salvo com sucesso.');
+                    document.getElementById('modal-serie').style.display = 'none';
+                    carregarConteudos(1);
+                } else {
+                    alert('Erro: ' + (data.erro || 'desconhecido'));
+                }
+            })
+            .catch(err => alert('Erro de rede: ' + err.message));
+    });
+
+    document.getElementById('form-editar-serie').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const nomeSerie = document.getElementById('edit-serie-nome').value;
+        const data = {
+            logo: document.getElementById('edit-serie-logo').value,
+            categoria: document.getElementById('edit-serie-categoria').value,
+            ano_lancamento: document.getElementById('edit-serie-ano').value,
+            sinopse_geral: document.getElementById('edit-serie-sinopse').value
+        };
+        fetch(`/api/admin/serie/${encodeURIComponent(nomeSerie)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         })
         .then(res => res.json())
         .then(data => {
             if (data.status === 'ok') {
-                alert('Salvo com sucesso.');
-                document.getElementById('modal-serie').style.display = 'none';
+                alert('Série atualizada com sucesso.');
+                document.getElementById('modal-editar-serie').style.display = 'none';
                 carregarConteudos(1);
             } else {
                 alert('Erro: ' + (data.erro || 'desconhecido'));
             }
         })
-        .catch(err => {
-            console.error('Erro na requisição:', err);
-            alert('Erro de rede ao salvar.');
-        });
+        .catch(err => alert('Erro de rede: ' + err.message));
     });
 
     // Cancelar modais
-    document.getElementById('cancelar-filme').addEventListener('click', () => {
-        document.getElementById('modal-filme').style.display = 'none';
-    });
-    document.getElementById('cancelar-serie').addEventListener('click', () => {
-        document.getElementById('modal-serie').style.display = 'none';
-    });
+    document.getElementById('cancelar-filme').addEventListener('click', () => document.getElementById('modal-filme').style.display = 'none');
+    document.getElementById('cancelar-serie').addEventListener('click', () => document.getElementById('modal-serie').style.display = 'none');
+    document.getElementById('cancelar-editar-serie').addEventListener('click', () => document.getElementById('modal-editar-serie').style.display = 'none');
 
     // Botões de adicionar
     document.getElementById('btn-add-filme').addEventListener('click', () => {
@@ -379,19 +617,24 @@
         carregarConteudos(1);
     }
     searchBtn.addEventListener('click', performSearch);
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') performSearch();
-    });
+    searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') performSearch(); });
 
     // Carregar mais
     document.getElementById('load-more').addEventListener('click', function() {
-        const nextPage = parseInt(this.dataset.page);
-        carregarConteudos(nextPage);
+        carregarConteudos(parseInt(this.dataset.page));
     });
 
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
     // Inicialização
-    document.addEventListener('DOMContentLoaded', function() {
-        carregarConteudos(1);
-    });
+    document.addEventListener('DOMContentLoaded', () => carregarConteudos(1));
 </script>
 {% endblock %}

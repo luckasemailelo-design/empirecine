@@ -896,6 +896,78 @@ def admin_edit_episodio(id):
     registrar_log_admin('editar_episodio', usuario_afetado_id=canal.id, descricao=f'Episódio editado: {canal.nome}')
     return jsonify({'status': 'ok'})
 
+# ==================== ROTAS ADMINISTRATIVAS PARA SÉRIES ====================
+@app.route('/api/admin/serie/<string:serie_nome>', methods=['GET'])
+@admin_required
+def admin_get_serie(serie_nome):
+    """Retorna os dados comuns de uma série (logo, categoria, ano, sinopse geral)."""
+    episodio = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).first()
+    if not episodio:
+        return jsonify({'erro': 'Série não encontrada'}), 404
+    return jsonify({
+        'logo': episodio.logo,
+        'categoria': episodio.categoria,
+        'ano_lancamento': episodio.ano_lancamento,
+        'sinopse_geral': episodio.sinopse_geral
+    })
+
+@app.route('/api/admin/serie/<string:serie_nome>', methods=['PUT'])
+@admin_required
+def admin_update_serie(serie_nome):
+    """Atualiza os dados comuns de todos os episódios da série."""
+    data = request.get_json()
+    if not data:
+        return jsonify({'erro': 'Dados não fornecidos'}), 400
+
+    # Busca todos os episódios da série
+    episodios = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).all()
+    if not episodios:
+        return jsonify({'erro': 'Série não encontrada'}), 404
+
+    # Atualiza cada episódio com os novos valores
+    for ep in episodios:
+        if 'logo' in data:
+            ep.logo = data['logo']
+        if 'categoria' in data:
+            ep.categoria = data['categoria']
+        if 'ano_lancamento' in data:
+            ep.ano_lancamento = data['ano_lancamento']
+        if 'sinopse_geral' in data:
+            ep.sinopse_geral = data['sinopse_geral']
+
+    db.session.commit()
+    registrar_log_admin('editar_serie', descricao=f'Série "{serie_nome}" atualizada')
+    return jsonify({'status': 'ok'})
+
+@app.route('/api/admin/serie/<string:serie_nome>/toggle-ativo', methods=['POST'])
+@admin_required
+def admin_toggle_serie_ativo(serie_nome):
+    """Alterna o status ativo de todos os episódios da série."""
+    episodios = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).all()
+    if not episodios:
+        return jsonify({'erro': 'Série não encontrada'}), 404
+
+    novo_status = not episodios[0].ativo if episodios else False
+    for ep in episodios:
+        ep.ativo = novo_status
+    db.session.commit()
+    registrar_log_admin('toggle_serie', descricao=f'Série "{serie_nome}" {"ativada" if novo_status else "desativada"}')
+    return jsonify({'status': 'ok', 'ativo': novo_status})
+
+@app.route('/api/admin/serie/<string:serie_nome>/excluir', methods=['DELETE'])
+@admin_required
+def admin_delete_serie(serie_nome):
+    """Exclui todos os episódios da série."""
+    episodios = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).all()
+    if not episodios:
+        return jsonify({'erro': 'Série não encontrada'}), 404
+
+    for ep in episodios:
+        db.session.delete(ep)
+    db.session.commit()
+    registrar_log_admin('excluir_serie', descricao=f'Série "{serie_nome}" excluída com {len(episodios)} episódios')
+    return jsonify({'status': 'ok'})
+
 # ==================== NOVAS ROTAS PARA CATEGORIAS DESTAQUE ====================
 @app.route('/api/admin/categorias-destaque/<tipo>', methods=['GET'])
 @admin_required
