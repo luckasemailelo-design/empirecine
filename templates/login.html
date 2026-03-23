@@ -34,6 +34,7 @@
             flex-direction: column;
             align-items: center;
             width: 100%;
+            /* 🔴 FIX PRINCIPAL */
         }
 
         /* ===== CONTAINER ===== */
@@ -150,7 +151,7 @@
             transform: scale(0.98);
         }
 
-        /* ===== MODAL (POPUP) ===== */
+        /* ===== MODAL (pop-up) ===== */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -260,6 +261,11 @@
             }
         }
 
+        /* ===== ESCONDE LOADING NO DESKTOP ===== */
+        .mobile-only {
+            display: none;
+        }
+
         /* ===== MOBILE ===== */
         @media (max-width: 768px) {
             body {
@@ -269,18 +275,17 @@
             .mobile-only {
                 display: block;
             }
+        }
 
+        @media (max-width: 768px) {
             .auth-wrapper {
                 max-width: 350px;
+                /* 🔴 estreita só no mobile */
             }
 
             .auth-container {
                 max-width: 100%;
             }
-        }
-
-        .mobile-only {
-            display: none;
         }
     </style>
 </head>
@@ -296,9 +301,7 @@
                 </h1>
                 <h2 class="login">LOGIN</h2>
                 {% if erro %}
-                <div class="alert error" style="background: #e50914; color: #fff; padding: 0.8rem; border-radius: 8px; margin-bottom: 1rem; text-align: center;">
-                    {{ erro }}
-                </div>
+                <div class="alert error">{{ erro }}</div>
                 {% endif %}
                 <form id="login-form" method="POST" class="auth-form">
                     <div class="form-group">
@@ -322,29 +325,29 @@
         </div>
     </div>
 
-    <!-- Modal de confirmação -->
-    <div id="logout-modal" class="modal-overlay">
+    <!-- Modal de confirmação de sessão -->
+    <div id="session-modal" class="modal-overlay">
         <div class="modal-card">
-            <h3><i class="fas fa-exclamation-triangle"></i> Sessão ativa encontrada</h3>
+            <h3><i class="fas fa-exclamation-triangle"></i> Sessão ativa</h3>
             <p>Você já possui uma sessão ativa em outro dispositivo.<br>Deseja encerrar essa sessão e continuar o login?</p>
             <div class="modal-actions">
-                <button class="btn-confirm" id="confirm-logout">Sim, encerrar e logar</button>
+                <button class="btn-confirm" id="confirm-logout">Sim, encerrar</button>
                 <button class="btn-cancel" id="cancel-logout">Não, cancelar</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Referências
+        // ==================== LÓGICA DE SESSÃO ====================
         const loginForm = document.getElementById('login-form');
-        const modal = document.getElementById('logout-modal');
+        const modal = document.getElementById('session-modal');
         const confirmBtn = document.getElementById('confirm-logout');
         const cancelBtn = document.getElementById('cancel-logout');
 
-        let pendingSubmit = false;   // Indica se estamos aguardando confirmação
-        let formData = null;         // Armazena os dados do formulário para reenvio
+        let pendingSubmit = false;   // flag para evitar múltiplos envios
+        let formData = null;         // armazena os dados do formulário
 
-        // Função para verificar se o usuário já está logado (sessão ativa)
+        // Verifica se o usuário já tem uma sessão ativa
         function verificarSessaoAtiva() {
             return fetch('/api/check-session', { method: 'GET', credentials: 'same-origin' })
                 .then(response => {
@@ -356,66 +359,48 @@
                 .catch(() => false);
         }
 
-        // Função para realizar logout (encerrar a sessão atual)
+        // Encerra a sessão atual (logout)
         function realizarLogout() {
             return fetch('/logout', { method: 'GET', credentials: 'same-origin' })
-                .then(() => {
-                    // Após logout, esperamos um pouco e limpamos o estado local
-                    return Promise.resolve();
-                })
+                .then(() => Promise.resolve())
                 .catch(err => console.error('Erro ao fazer logout:', err));
         }
 
-        // Manipula o envio do formulário
+        // Intercepta o envio do formulário
         loginForm.addEventListener('submit', function(event) {
             event.preventDefault();
 
-            // Coleta os dados do formulário
+            if (pendingSubmit) return;
+
             const email = document.getElementById('email').value;
             const senha = document.getElementById('senha').value;
 
-            // Se já estamos aguardando confirmação, não faz nada (evita loops)
-            if (pendingSubmit) return;
-
-            // Primeiro verifica se já existe uma sessão ativa
             verificarSessaoAtiva().then(temSessao => {
                 if (temSessao) {
-                    // Guarda os dados para reenviar após confirmação
                     formData = { email, senha };
-                    // Mostra o modal
                     modal.classList.add('active');
                     pendingSubmit = true;
                 } else {
-                    // Sem sessão ativa, pode submeter normalmente
+                    // Sem sessão ativa, submete normalmente
                     loginForm.submit();
                 }
             }).catch(() => {
-                // Em caso de erro na verificação, submete normalmente
+                // Em caso de erro na verificação, submete
                 loginForm.submit();
             });
         });
 
-        // Confirmação: fazer logout e depois submeter o formulário novamente
+        // Confirmação: faz logout e depois submete
         confirmBtn.addEventListener('click', function() {
-            // Esconde o modal
             modal.classList.remove('active');
-
-            // Realiza logout e depois envia o formulário novamente
             realizarLogout().then(() => {
-                // Após logout, recria os campos e submete
-                const emailInput = document.getElementById('email');
-                const senhaInput = document.getElementById('senha');
-                emailInput.value = formData.email;
-                senhaInput.value = formData.senha;
-
-                // Limpa estado
+                // Recria os campos e submete
+                document.getElementById('email').value = formData.email;
+                document.getElementById('senha').value = formData.senha;
                 pendingSubmit = false;
-                formData = null;
-
-                // Submete o formulário (agora sem sessão ativa)
                 loginForm.submit();
             }).catch(() => {
-                // Se falhar no logout, ainda tenta submeter (melhor que travar)
+                // Se falhar no logout, mesmo assim tenta submeter
                 pendingSubmit = false;
                 loginForm.submit();
             });
