@@ -113,14 +113,14 @@
     <div class="table-responsive">
         <table class="tabela-usuarios">
             <thead>
-                <tr>
+                 <tr>
                     <th>Nome</th>
                     <th>Email</th>
                     <th>Tipo</th>
                     <th>Status</th>
                     <th>Expira em</th>
                     <th>Ações</th>
-                </tr>
+                 </tr>
             </thead>
             <tbody id="usuarios-list">
                 <!-- Será preenchido via JS -->
@@ -179,13 +179,13 @@
             <div class="table-responsive">
                 <table class="tabela-usuarios">
                     <thead>
-                        <tr>
+                         <tr>
                             <th>Data/Hora</th>
                             <th>Admin</th>
                             <th>Ação</th>
                             <th>Usuário Afetado</th>
                             <th>Descrição</th>
-                        </tr>
+                         </tr>
                     </thead>
                     <tbody id="logs-list">
                         <!-- Será preenchido via JS -->
@@ -266,9 +266,14 @@
                     const badgeText = usuario.is_admin ? 'Admin' : 'Usuário';
                     const statusClass = usuario.ativo ? '' : 'expirado';
                     const statusText = usuario.ativo ? 'Ativo' : 'Banido';
+                    
+                    // Botão de logout apenas para usuários não administradores
+                    const logoutButton = !usuario.is_admin ? 
+                        `<button class="btn-acao logout" onclick="logoutUsuario(${usuario.id})" title="Deslogar"><i class="fas fa-sign-out-alt"></i></button>` : '';
+                    
                     tr.innerHTML = `
-                        <td>${usuario.nome}</td>
-                        <td>${usuario.email}</td>
+                        <td>${escapeHtml(usuario.nome)}</td>
+                        <td>${escapeHtml(usuario.email)}</td>
                         <td><span class="${badgeClass}">${badgeText}</span></td>
                         <td class="${statusClass}">${statusText}</td>
                         <td class="${expirado ? 'expirado' : ''}">${usuario.expira_em || 'Nunca'}${expirado ? ' (Expirado)' : ''}</td>
@@ -276,6 +281,7 @@
                             <button class="btn-acao editar" onclick="editarUsuario(${usuario.id})" title="Editar"><i class="fas fa-edit"></i></button>
                             <button class="btn-acao banir" onclick="banirUsuario(${usuario.id}, ${usuario.ativo})" title="${usuario.ativo ? 'Banir' : 'Ativar'}"><i class="fas fa-${usuario.ativo ? 'ban' : 'check'}"></i></button>
                             <button class="btn-acao resetar" onclick="resetarSenha(${usuario.id})" title="Resetar senha"><i class="fas fa-key"></i></button>
+                            ${logoutButton}
                             <button class="btn-acao excluir" onclick="excluirUsuario(${usuario.id})" title="Excluir"><i class="fas fa-trash"></i></button>
                         </td>
                     `;
@@ -292,7 +298,37 @@
             .catch(err => console.error('Erro ao carregar usuários:', err));
     }
 
-    // ==================== AÇÕES ====================
+    // Função auxiliar para escapar HTML
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    // ==================== NOVA FUNÇÃO: LOGOUT REMOTO ====================
+    window.logoutUsuario = function(id) {
+        if (!confirm('Tem certeza que deseja deslogar este usuário? Ele será desconectado imediatamente.')) return;
+        fetch(`/api/admin/usuarios/${id}/logout`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    alert('Usuário deslogado com sucesso.');
+                    carregarUsuarios(1); // recarregar a lista para atualizar o status
+                } else {
+                    alert('Erro: ' + (data.erro || 'desconhecido'));
+                }
+            })
+            .catch(err => {
+                console.error('Erro ao deslogar usuário:', err);
+                alert('Erro de rede ao deslogar usuário.');
+            });
+    };
+
+    // ==================== AÇÕES EXISTENTES ====================
     window.banirUsuario = function(id, ativo) {
         if (!confirm(`Tem certeza que deseja ${ativo ? 'banir' : 'ativar'} este usuário?`)) return;
         fetch(`/api/admin/usuarios/${id}/banir`, { method: 'POST' })
@@ -416,10 +452,10 @@
                     const tr = document.createElement('tr');
                     tr.innerHTML = `
                         <td>${log.data_hora}</td>
-                        <td>${log.admin}</td>
-                        <td>${log.acao}</td>
-                        <td>${log.usuario_afetado || '-'}</td>
-                        <td>${log.descricao || '-'}</td>
+                        <td>${escapeHtml(log.admin)}</td>
+                        <td>${escapeHtml(log.acao)}</td>
+                        <td>${escapeHtml(log.usuario_afetado || '-')}</td>
+                        <td>${escapeHtml(log.descricao || '-')}</td>
                     `;
                     tbody.appendChild(tr);
                 });

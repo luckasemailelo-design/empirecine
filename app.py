@@ -577,6 +577,19 @@ def admin_banir_usuario(usuario_id):
     registrar_log_admin('banimento', usuario_id, f'Novo status ativo: {usuario.ativo}')
     return jsonify({'status': 'ok', 'ativo': usuario.ativo})
 
+@app.route('/api/admin/usuarios/<int:usuario_id>/logout', methods=['POST'])
+@admin_required
+def admin_logout_usuario(usuario_id):
+    usuario = Usuario.query.get_or_404(usuario_id)
+    # Remove todas as sessões ativas do usuário (apenas para não administradores)
+    if not usuario.is_admin:
+        SessaoAtiva.query.filter_by(usuario_id=usuario_id).delete()
+        db.session.commit()
+        registrar_log_admin('logout_forcado', usuario_id, f'Admin deslogou o usuário {usuario.nome}')
+        return jsonify({'status': 'ok'})
+    else:
+        return jsonify({'erro': 'Administradores não podem ser deslogados remotamente'}), 400
+
 @app.route('/api/admin/usuarios/<int:usuario_id>/excluir', methods=['DELETE'])
 @admin_required
 def admin_excluir_usuario(usuario_id):
