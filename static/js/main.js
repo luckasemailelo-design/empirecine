@@ -158,3 +158,26 @@ function adicionarSetasScroll(container) {
     wrapper.appendChild(leftArrow);
     wrapper.appendChild(rightArrow);
 }
+
+// ==================== PESQUISA GLOBAL ====================
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('global-search-input');
+    const searchBtn = document.getElementById('global-search-btn');
+
+    if (searchInput && searchBtn) {
+        function realizarPesquisa() {
+            const termo = searchInput.value.trim();
+            if (termo !== '') {
+                window.location.href = `/busca?q=${encodeURIComponent(termo)}`;
+            }
+        }
+
+        searchInput.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                realizarPesquisa();
+            }
+        });
+
+        searchBtn.addEventListener('click', realizarPesquisa);
+    }
+});

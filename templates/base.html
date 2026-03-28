@@ -13,8 +13,14 @@
         <nav class="navbar" id="navbar">
             <div class="nav-brand">
                 <a href="{{ url_for('index') }}"><span class="empire"><img src="/static/uploads/bobina.png" alt="icone" class="imgp">EMPIRE</span><span class="cine">CINE</span></a>
-                
             </div>
+
+            <!-- Barra de pesquisa dentro da navbar -->
+            <div class="nav-search">
+                <input type="text" id="global-search-input" class="nav-search-input" placeholder="Buscar filmes, séries...">
+                <button id="global-search-btn" class="nav-search-btn"><i class="fas fa-search"></i></button>
+            </div>
+
             <ul class="nav-menu" id="nav-menu">
                 <li><a href="{{ url_for('index') }}">Início</a></li>
                 <li><a href="{{ url_for('series') }}">Séries</a></li>

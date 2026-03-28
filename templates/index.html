@@ -2,12 +2,6 @@
 {% block title %}Home{% endblock %}
 {% block content %}
 
-<!-- Barra de pesquisa com botão -->
-<div class="search-bar-container">
-    <input type="text" id="home-search-input" class="home-search-input" placeholder="Buscar filmes, séries...">
-    <button id="home-search-btn" class="home-search-btn">Pesquisar</button>
-</div>
-
 <!-- Seção Destaque (5 mais assistidos globalmente) -->
 <section class="hero-section">
     <div class="hero-container" id="hero-container">
@@ -32,29 +26,6 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // ==================== PESQUISA ====================
-        const searchInput = document.getElementById('home-search-input');
-        const searchBtn = document.getElementById('home-search-btn');
-
-        function realizarPesquisa() {
-            const termo = searchInput.value.trim();
-            if (termo !== '') {
-                window.location.href = `/busca?q=${encodeURIComponent(termo)}`;
-            }
-        }
-
-        if (searchInput) {
-            searchInput.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
-                    realizarPesquisa();
-                }
-            });
-        }
-
-        if (searchBtn) {
-            searchBtn.addEventListener('click', realizarPesquisa);
-        }
-
         // ==================== FUNÇÕES DE FAVORITO ====================
         // Carregar estado dos favoritos (marcar botões ativos)
         function carregarEstadoFavoritos() {
@@ -90,7 +61,6 @@
                     } else {
                         btn.classList.remove('favorito-ativo');
                     }
-                    // Opcional: recarregar estado para sincronizar outros botões
                     carregarEstadoFavoritos();
                 })
                 .catch(err => {
@@ -100,16 +70,8 @@
         });
 
         // ==================== FUNÇÕES DE CARD ====================
-        // Função específica para os cards de "Assistido recentemente"
         function recentesCardTemplate(item) {
-            // Para episódios (com temporada e episodio), o link é o player
-            let link;
-            if (item.temporada !== null && item.episodio !== null) {
-                link = `/play/${item.id}`;
-            } else {
-                link = `/play/${item.id}`;
-            }
-
+            let link = `/play/${item.id}`;
             let extraInfo = '';
             if (item.temporada !== null && item.episodio !== null) {
                 extraInfo = `<span class="extra-info">T${item.temporada} E${item.episodio}</span>`;
@@ -132,7 +94,6 @@
             `;
         }
 
-        // Função auxiliar para recriar setas após carregar conteúdo
         function atualizarSetas() {
             if (typeof adicionarSetasScroll === 'function') {
                 setTimeout(() => {
@@ -242,7 +203,6 @@
                 recentes.innerHTML = '';
                 data.assistido_recentemente.forEach(item => recentes.insertAdjacentHTML('beforeend', recentesCardTemplate(item)));
 
-                // Atualiza estado dos favoritos e setas
                 carregarEstadoFavoritos();
                 atualizarSetas();
             })
