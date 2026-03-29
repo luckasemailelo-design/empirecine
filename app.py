@@ -480,6 +480,70 @@ def login():
 
     return render_template('login.html')
 
+@app.route('/api/mobile/login', methods=['POST'])
+def api_mobile_login():
+    data = request.get_json(silent=True) or {}
+
+    email = data.get('email', '').strip()
+    senha = data.get('senha', '').strip()
+
+    if not email or not senha:
+        return jsonify({'erro': 'Email e senha são obrigatórios'}), 400
+
+    usuario = Usuario.query.filter_by(email=email).first()
+
+    if not usuario or not check_password_hash(usuario.senha, senha):
+        return jsonify({'erro': 'Email ou senha inválidos'}), 401
+
+    if not usuario.ativo:
+        return jsonify({'erro': 'Conta desativada. Contate o administrador.'}), 403
+
+    if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
+        return jsonify({'erro': 'Conta expirada. Contate o administrador.'}), 403
+
+    # remove sessões antigas de usuários comuns
+    if not usuario.is_admin:
+        SessaoAtiva.query.filter_by(usuario_id=usuario.id).delete()
+        db.session.commit()
+
+    token = gerar_token_sessao()
+
+    nova_sessao = SessaoAtiva(usuario_id=usuario.id, token=token)
+    db.session.add(nova_sessao)
+    db.session.commit()
+
+    # opcional: também popula sessão Flask
+    session['usuario_id'] = usuario.id
+    session['token_sessao'] = token
+
+    usuario.ultimo_acesso = datetime.utcnow()
+    db.session.commit()
+
+    return jsonify({
+        'status': 'ok',
+        'token': token,
+        'usuario': {
+            'id': usuario.id,
+            'nome': usuario.nome,
+            'email': usuario.email,
+            'is_admin': usuario.is_admin,
+            'profile_pic': usuario.profile_pic
+        }
+    }), 200
+
+@app.route('/api/mobile/logout', methods=['POST'])
+def api_mobile_logout():
+    token = get_bearer_token()
+
+    if not token:
+        return jsonify({'erro': 'Token não informado'}), 401
+
+    SessaoAtiva.query.filter_by(token=token).delete()
+    db.session.commit()
+    session.clear()
+
+    return jsonify({'status': 'ok'}), 200
+
 # ---------- Demais rotas (não alteradas) ----------
 # Inclua aqui todas as rotas restantes do seu código original
 # (elas não foram alteradas, apenas omitidas por brevidade)
