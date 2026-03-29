@@ -1259,13 +1259,24 @@ def get_mais_assistidos_global(limite=5):
 
     series_map = {}
     for canal, total in series_raw:
-        if canal.serie_nome not in series_map:
-            series_map[canal.serie_nome] = {'total': 0, 'latest': canal}
-        series_map[canal.serie_nome]['total'] += total
-        if canal.id > series_map[canal.serie_nome]['latest'].id:
-            series_map[canal.serie_nome]['latest'] = canal
+        chave = canal.serie_nome or canal.nome
+        if chave not in series_map:
+            series_map[chave] = {
+                'total': 0,
+                'representante': canal
+            }
 
-    series_list = [(data['latest'], data['total']) for data in series_map.values()]
+        series_map[chave]['total'] += total
+
+        # Preferir um item com logo
+        atual = series_map[chave]['representante']
+        if (not atual.logo and canal.logo) or (canal.id < atual.id):
+            series_map[chave]['representante'] = canal
+
+    series_list = [
+        (data['representante'], data['total'])
+        for data in series_map.values()
+    ]
     series_list.sort(key=lambda x: x[1], reverse=True)
 
     combined = [(canal, total) for canal, total in filmes] + series_list
