@@ -1,3 +1,6 @@
-Flask
-Flask-SQLAlchemy
+flask
+flask-cors
+flask-jwt-extended
+PyJWT
 requests
+sqlalchemy
