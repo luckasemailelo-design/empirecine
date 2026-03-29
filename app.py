@@ -288,7 +288,16 @@ def verificar_sessao_unica():
 @app.before_request
 def before_request():
     """Middleware para aceitar sessão web e Bearer token do Android."""
-    rotas_publicas = ['login', 'static', 'proxy', 'busca', 'api_busca', 'logout']
+    rotas_publicas = [
+        'login',
+        'api_mobile_login',
+        'api_mobile_logout',
+        'static',
+        'proxy',
+        'busca',
+        'api_busca',
+        'logout'
+    ]
 
     if request.endpoint in rotas_publicas:
         return
