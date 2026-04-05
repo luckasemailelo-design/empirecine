@@ -1571,6 +1571,34 @@ def serialize_canal(canal):
     }
 Canal.serialize = serialize_canal
 
+@app.route('/api/conteudo/<int:id>/url')
+def api_conteudo_url(id):
+    """Retorna a URL de um conteúdo (filme ou episódio) pelo ID."""
+    canal = Canal.query.get(id)
+    if not canal:
+        return jsonify({'erro': 'Conteúdo não encontrado'}), 404
+    
+    # Verifica se o usuário tem acesso (opcional, mas recomendado)
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    
+    usuario = Usuario.query.get(session['usuario_id'])
+    if not usuario:
+        return jsonify({'erro': 'Usuário inválido'}), 401
+    
+    if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
+        return jsonify({'erro': 'Conta expirada'}), 403
+    
+    if canal.categoria == 'Adultos' or not canal.ativo:
+        return jsonify({'erro': 'Conteúdo não disponível'}), 403
+    
+    return jsonify({
+        'id': canal.id,
+        'url': canal.url,
+        'tipo': canal.tipo,
+        'nome': canal.nome
+    })
+
 # ---------- Favoritos ----------
 @app.route('/favoritar/<int:canal_id>', methods=['POST'])
 def favoritar(canal_id):
