@@ -297,6 +297,7 @@ def before_request():
         'busca',
         'api_busca',
         'logout'
+        'api_conteudo_url'
     ]
 
     if request.endpoint in rotas_publicas:
