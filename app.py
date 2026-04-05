@@ -1677,14 +1677,43 @@ def proxy():
     url = request.args.get('url')
     if not url:
         return 'URL não fornecida', 400
+
+    # Prepara headers para a requisição ao servidor de origem
     headers = {}
     if 'Range' in request.headers:
         headers['Range'] = request.headers.get('Range')
+
     try:
-        resp = requests.get(url, headers=headers, stream=True, timeout=10)
-        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-        headers = [(name, value) for name, value in resp.raw.headers.items() if name.lower() not in excluded_headers]
-        return Response(resp.iter_content(chunk_size=8192), status=resp.status_code, headers=headers)
+        # Faz a requisição com timeout maior (30s)
+        resp = requests.get(url, headers=headers, stream=True, timeout=30)
+
+        # Cabeçalhos que NÃO devem ser repassados (apenas os que atrapalham)
+        excluded_headers = ['content-encoding', 'transfer-encoding', 'connection']
+
+        # Constrói a lista de cabeçalhos a serem enviados ao cliente
+        response_headers = []
+        for name, value in resp.raw.headers.items():
+            if name.lower() not in excluded_headers:
+                response_headers.append((name, value))
+
+        # Garante que o Content-Type esteja presente (fallback para vídeo MP4)
+        if not any(name.lower() == 'content-type' for name, _ in response_headers):
+            response_headers.append(('Content-Type', 'video/mp4'))
+
+        # Garante que Accept-Ranges esteja presente (importante para seek)
+        if not any(name.lower() == 'accept-ranges' for name, _ in response_headers):
+            # Se o servidor original não enviou, mas suportamos bytes (já que o proxy pode fazer seek)
+            response_headers.append(('Accept-Ranges', 'bytes'))
+
+        # Cria a resposta com os cabeçalhos tratados
+        return Response(
+            resp.iter_content(chunk_size=8192),
+            status=resp.status_code,
+            headers=response_headers
+        )
+
+    except requests.exceptions.Timeout:
+        return 'Erro no proxy: timeout ao tentar acessar o vídeo', 504
     except Exception as e:
         return f'Erro no proxy: {str(e)}', 500
 
