@@ -2109,4 +2109,13 @@ main {
     .nav-toggle {
         order: 1;
     }
+
+    
 }
+
+.section-title {
+    margin-top: 70px;
+    text-align: center;
+}
+
+

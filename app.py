@@ -1233,6 +1233,69 @@ def api_filmes_categorias_destaque():
         })
     return jsonify(resultado)
 
+# ========== API DE PERFIL ==========
+@app.route('/api/perfil', methods=['GET'])
+def api_perfil():
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    usuario = Usuario.query.get(session['usuario_id'])
+    return jsonify({
+        'id': usuario.id,
+        'nome': usuario.nome,
+        'email': usuario.email,
+        'profile_pic': usuario.profile_pic,
+        'is_admin': usuario.is_admin,
+        'expira_em': usuario.expira_em.isoformat() if usuario.expira_em else None
+    })
+
+@app.route('/api/perfil', methods=['PUT'])
+def api_atualizar_perfil():
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    usuario = Usuario.query.get(session['usuario_id'])
+    data = request.get_json()
+    if 'nome' in data:
+        usuario.nome = data['nome']
+    if 'senha' in data:
+        usuario.senha = generate_password_hash(data['senha'])
+    # Para foto, seria melhor um endpoint separado com multipart
+    db.session.commit()
+    return jsonify({'status': 'ok'})
+
+# ========== DETALHES DE FILME ==========
+@app.route('/api/filme/<int:id>')
+def api_filme_detalhe(id):
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    filme = Canal.query.get_or_404(id)
+    if filme.tipo != 'filme' or filme.categoria == 'Adultos' or not filme.ativo:
+        return jsonify({'erro': 'Conteúdo não disponível'}), 403
+    return jsonify({
+        'id': filme.id,
+        'nome': filme.nome,
+        'sinopse': filme.sinopse_geral,
+        'logo': filme.logo,
+        'categoria': filme.categoria,
+        'ano': filme.ano_lancamento,
+        'url': url_for('api_conteudo_url', id=filme.id, _external=True)
+    })
+
+# ========== DETALHES DE SÉRIE ==========
+@app.route('/api/serie/<nome>')
+def api_serie_detalhe(nome):
+    if 'usuario_id' not in session:
+        return jsonify({'erro': 'Não autenticado'}), 401
+    episodio = Canal.query.filter_by(tipo='serie', serie_nome=nome).first()
+    if not episodio or episodio.categoria == 'Adultos' or not episodio.ativo:
+        return jsonify({'erro': 'Série não disponível'}), 404
+    return jsonify({
+        'nome': nome,
+        'sinopse': episodio.sinopse_geral,
+        'logo': episodio.logo,
+        'categoria': episodio.categoria,
+        'ano': episodio.ano_lancamento
+    })
+
 # ---------- API pública ----------
 def get_random_items(tipo, limite=15, ano=None):
     from sqlalchemy.sql.expression import func
@@ -1706,6 +1769,15 @@ def proxy():
     url = request.args.get('url')
     if not url:
         return 'URL não fornecida', 400
+
+    # Verifica se a URL pertence a algum canal ativo e permitido
+    canal = Canal.query.filter_by(url=url).first()
+    if not canal or canal.categoria == 'Adultos' or not canal.ativo:
+        abort(403)
+
+    # Verifica autenticação (já feita pelo before_request, mas reforça)
+    if 'usuario_id' not in session:
+        abort(401)
 
     headers = {}
     if 'Range' in request.headers:

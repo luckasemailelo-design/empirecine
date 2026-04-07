@@ -7,10 +7,7 @@
             <h2>Filtros</h2>
             <button class="sidebar-close" id="sidebar-close"><i class="fas fa-times"></i></button>
         </div>
-        <div class="sidebar-search">
-            <input type="text" id="search-input" class="search-input" placeholder="Buscar séries...">
-            <button id="search-btn" class="search-btn">Buscar</button>
-        </div>
+        
         <div class="filter-group">
             <div class="filter-header" onclick="toggleAnoFilter(this)">
                 <span>Ano</span>
@@ -115,19 +112,16 @@
             });
         });
 
-    // Função para carregar categorias em destaque (sem agrupamento, pois o backend já retorna séries únicas)
+    // Função para carregar categorias em destaque
     function carregarCategoriasDestaque() {
         fetch('/api/series/categorias-destaque')
             .then(res => res.json())
             .then(data => {
-                console.log('Dados recebidos da API:', data);
                 categoriasDestaqueContainer.innerHTML = '';
                 data.forEach(secao => {
                     const titulo = secao.titulo;
                     const itens = secao.itens;
                     if (itens.length === 0) return;
-
-                    console.log(`Categoria "${titulo}" recebeu ${itens.length} itens.`);
 
                     const secaoDiv = document.createElement('div');
                     secaoDiv.classList.add('categoria-destaque');
