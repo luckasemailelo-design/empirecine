@@ -6,7 +6,7 @@ import random
 import string
 import secrets
 import requests
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, abort, g
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, abort, g, send_file
 from database import init_db, db
 from models import Usuario, Canal, Favorito, Progresso, AdminLog, CategoriaDestaque, SessaoAtiva
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -296,8 +296,9 @@ def before_request():
         'proxy',
         'busca',
         'api_busca',
-        'logout'
-        'api_conteudo_url'
+        'logout',
+        'api_conteudo_url',
+        'api_video_stream'      # Adiciona a nova rota de vídeo como pública (mas ela mesma fará autenticação)
     ]
 
     if request.endpoint in rotas_publicas:
@@ -381,7 +382,6 @@ def register():
         return redirect(url_for('admin'))
     return redirect(url_for('admin'))
 
-# Adicione esta rota (se já não existir)
 @app.route('/api/check-session')
 def check_session():
     """Verifica se o usuário atual tem uma sessão ativa."""
@@ -554,10 +554,7 @@ def api_mobile_logout():
 
     return jsonify({'status': 'ok'}), 200
 
-# ---------- Demais rotas (não alteradas) ----------
-# Inclua aqui todas as rotas restantes do seu código original
-# (elas não foram alteradas, apenas omitidas por brevidade)
-
+# ---------- Demais rotas ----------
 @app.route('/series')
 def series():
     if 'usuario_id' not in session:
@@ -789,7 +786,6 @@ def admin_banir_usuario(usuario_id):
 @admin_required
 def admin_logout_usuario(usuario_id):
     usuario = Usuario.query.get_or_404(usuario_id)
-    # Remove todas as sessões ativas do usuário (apenas para não administradores)
     if not usuario.is_admin:
         SessaoAtiva.query.filter_by(usuario_id=usuario_id).delete()
         db.session.commit()
@@ -1109,12 +1105,10 @@ def admin_update_serie(serie_nome):
     if not data:
         return jsonify({'erro': 'Dados não fornecidos'}), 400
 
-    # Busca todos os episódios da série
     episodios = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).all()
     if not episodios:
         return jsonify({'erro': 'Série não encontrada'}), 404
 
-    # Atualiza cada episódio com os novos valores
     for ep in episodios:
         if 'logo' in data:
             ep.logo = data['logo']
@@ -1196,7 +1190,6 @@ def api_series_categorias_destaque():
     destaques = CategoriaDestaque.query.filter_by(tipo='serie').order_by(CategoriaDestaque.posicao).all()
     resultado = []
     for d in destaques:
-        # Subquery to get one id per serie_nome for this category
         subquery = db.session.query(
             Canal.serie_nome,
             func.min(Canal.id).label('id')
@@ -1258,7 +1251,6 @@ def api_atualizar_perfil():
         usuario.nome = data['nome']
     if 'senha' in data:
         usuario.senha = generate_password_hash(data['senha'])
-    # Para foto, seria melhor um endpoint separado com multipart
     db.session.commit()
     return jsonify({'status': 'ok'})
 
@@ -1332,7 +1324,6 @@ def get_mais_assistidos_global(limite=5):
 
         series_map[chave]['total'] += total
 
-        # Preferir um item com logo
         atual = series_map[chave]['representante']
         if (not atual.logo and canal.logo) or (canal.id < atual.id):
             series_map[chave]['representante'] = canal
@@ -1642,7 +1633,6 @@ def api_conteudo_url(id):
     if not canal:
         return jsonify({'erro': 'Conteúdo não encontrado'}), 404
     
-    # Verifica se o usuário tem acesso (opcional, mas recomendado)
     if 'usuario_id' not in session:
         return jsonify({'erro': 'Não autenticado'}), 401
     
@@ -1662,6 +1652,43 @@ def api_conteudo_url(id):
         'tipo': canal.tipo,
         'nome': canal.nome
     })
+
+# ---------- Rota de streaming para aplicativo móvel (vídeo) ----------
+@app.route('/api/video/<int:id>')
+def api_video_stream(id):
+    """
+    Retorna o arquivo de vídeo diretamente para o aplicativo Android.
+    Autenticação via Bearer token (header Authorization).
+    """
+    # 1. Extrai o token do header
+    token = get_bearer_token()
+    if not token:
+        return jsonify({'erro': 'Token não fornecido'}), 401
+
+    # 2. Valida o token
+    sessao = SessaoAtiva.query.filter_by(token=token).first()
+    if not sessao:
+        return jsonify({'erro': 'Token inválido'}), 401
+
+    usuario = Usuario.query.get(sessao.usuario_id)
+    if not usuario or not usuario.ativo:
+        return jsonify({'erro': 'Usuário inativo'}), 403
+
+    if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
+        return jsonify({'erro': 'Conta expirada'}), 403
+
+    # 3. Obtém o canal (vídeo)
+    canal = Canal.query.get_or_404(id)
+    if canal.categoria == 'Adultos' or not canal.ativo:
+        abort(403)
+
+    # 4. Caminho do arquivo (supondo que canal.url seja o caminho local absoluto)
+    file_path = canal.url
+    if not os.path.exists(file_path):
+        return jsonify({'erro': 'Arquivo de vídeo não encontrado'}), 404
+
+    # 5. Envia o arquivo como vídeo MP4
+    return send_file(file_path, mimetype='video/mp4')
 
 # ---------- Favoritos ----------
 @app.route('/favoritar/<int:canal_id>', methods=['POST'])
@@ -1770,12 +1797,10 @@ def proxy():
     if not url:
         return 'URL não fornecida', 400
 
-    # Verifica se a URL pertence a algum canal ativo e permitido
     canal = Canal.query.filter_by(url=url).first()
     if not canal or canal.categoria == 'Adultos' or not canal.ativo:
         abort(403)
 
-    # Verifica autenticação (já feita pelo before_request, mas reforça)
     if 'usuario_id' not in session:
         abort(401)
 
@@ -1792,13 +1817,11 @@ def proxy():
             if name.lower() not in excluded_headers:
                 response_headers.append((name, value))
 
-        # 🔥 FORÇA Content-Type para video/mp4
         response_headers = [
             (name, 'video/mp4' if name.lower() == 'content-type' else value)
             for name, value in response_headers
         ]
 
-        # Garante Accept-Ranges (caso não exista)
         if not any(name.lower() == 'accept-ranges' for name, _ in response_headers):
             response_headers.append(('Accept-Ranges', 'bytes'))
 
@@ -1832,7 +1855,6 @@ def criar_admin_padrao():
 
 if __name__ == '__main__':
     with app.app_context():
-        # Verificar e adicionar coluna 'ativo' se necessário
         from sqlalchemy import inspect
         inspector = inspect(db.engine)
         columns = [col['name'] for col in inspector.get_columns('canal')]
@@ -1841,10 +1863,8 @@ if __name__ == '__main__':
             db.session.commit()
             logger.info("Coluna 'ativo' adicionada à tabela canal.")
 
-        # Criar tabela de sessões ativas se não existir
-        from sqlalchemy import inspect
         if 'sessao_ativa' not in inspect(db.engine).get_table_names():
-            db.create_all()  # Cria todas as tabelas que ainda não existem
+            db.create_all()
             logger.info("Tabela 'sessao_ativa' criada.")
 
         criar_admin_padrao()
