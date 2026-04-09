@@ -1656,16 +1656,13 @@ def api_conteudo_url(id):
 # ---------- Rota de streaming para aplicativo móvel (vídeo) ----------
 @app.route('/api/video/<int:id>')
 def api_video_stream(id):
-    """
-    Retorna o arquivo de vídeo diretamente para o aplicativo Android.
-    Autenticação via Bearer token (header Authorization).
-    """
-    # 1. Extrai o token do header
+    from flask import send_file, jsonify, abort
+    import os
+
     token = get_bearer_token()
     if not token:
         return jsonify({'erro': 'Token não fornecido'}), 401
 
-    # 2. Valida o token
     sessao = SessaoAtiva.query.filter_by(token=token).first()
     if not sessao:
         return jsonify({'erro': 'Token inválido'}), 401
@@ -1677,17 +1674,14 @@ def api_video_stream(id):
     if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
         return jsonify({'erro': 'Conta expirada'}), 403
 
-    # 3. Obtém o canal (vídeo)
     canal = Canal.query.get_or_404(id)
     if canal.categoria == 'Adultos' or not canal.ativo:
         abort(403)
 
-    # 4. Caminho do arquivo (supondo que canal.url seja o caminho local absoluto)
     file_path = canal.url
     if not os.path.exists(file_path):
-        return jsonify({'erro': 'Arquivo de vídeo não encontrado'}), 404
+        return jsonify({'erro': 'Arquivo não encontrado'}), 404
 
-    # 5. Envia o arquivo como vídeo MP4
     return send_file(file_path, mimetype='video/mp4')
 
 # ---------- Favoritos ----------
