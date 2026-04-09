@@ -6,13 +6,21 @@ import random
 import string
 import secrets
 import requests
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify, Response, abort, g, send_file
+from functools import wraps
+from datetime import datetime, timedelta
+
+from flask import (
+    Flask, render_template, request, redirect, url_for, session,
+    jsonify, Response, abort, g, send_file
+)
+
 from database import init_db, db
 from models import Usuario, Canal, Favorito, Progresso, AdminLog, CategoriaDestaque, SessaoAtiva
+
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
-from datetime import datetime, timedelta
 from sqlalchemy import func, desc
+
 
 app = Flask(__name__)
 app.secret_key = 'supersecretkey'  # Troque em produção
@@ -41,11 +49,12 @@ TMDB_API_KEY = os.environ.get('TMDB_API_KEY', 'dcc7930e96fc6ef24e8711d614b9071e'
 TMDB_BASE_URL = 'https://api.themoviedb.org/3'
 TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p/w500'
 
+
 def buscar_filme_por_titulo(titulo):
     url = f"{TMDB_BASE_URL}/search/movie"
     params = {'api_key': TMDB_API_KEY, 'query': titulo, 'language': 'pt-BR'}
     try:
-        resp = requests.get(url, params=params)
+        resp = requests.get(url, params=params, timeout=15)
         dados = resp.json()
         if dados.get('results'):
             filme = dados['results'][0]
@@ -54,14 +63,15 @@ def buscar_filme_por_titulo(titulo):
                 'poster': f"{TMDB_IMAGE_BASE}{filme['poster_path']}" if filme.get('poster_path') else None
             }
     except Exception as e:
-        logger.error(f"Erro na busca TMDB: {e}")
+        logger.error(f"Erro na busca TMDB (filme): {e}")
     return {'sinopse': 'Sinopse não encontrada', 'poster': None}
+
 
 def buscar_serie_por_titulo(titulo):
     url = f"{TMDB_BASE_URL}/search/tv"
     params = {'api_key': TMDB_API_KEY, 'query': titulo, 'language': 'pt-BR'}
     try:
-        resp = requests.get(url, params=params)
+        resp = requests.get(url, params=params, timeout=15)
         dados = resp.json()
         if dados.get('results'):
             serie = dados['results'][0]
@@ -71,25 +81,29 @@ def buscar_serie_por_titulo(titulo):
                 'poster': f"{TMDB_IMAGE_BASE}{serie['poster_path']}" if serie.get('poster_path') else None
             }
     except Exception as e:
-        logger.error(f"Erro na busca TMDB: {e}")
+        logger.error(f"Erro na busca TMDB (serie): {e}")
     return {'id': None, 'sinopse': 'Sinopse não encontrada', 'poster': None}
+
 
 def buscar_episodio(series_id, temporada, episodio):
     url = f"{TMDB_BASE_URL}/tv/{series_id}/season/{temporada}/episode/{episodio}"
     params = {'api_key': TMDB_API_KEY, 'language': 'pt-BR'}
     try:
-        resp = requests.get(url, params=params)
+        resp = requests.get(url, params=params, timeout=15)
         dados = resp.json()
         return dados.get('overview', 'Sinopse do episódio não disponível')
     except Exception as e:
-        logger.error(f"Erro na busca do episódio: {e}")
+        logger.error(f"Erro na busca do episódio (TMDB): {e}")
         return 'Sinopse não encontrada'
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+
 def allowed_m3u_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_M3U_EXTENSIONS
+
 
 # ---------- Função para registrar logs admin ----------
 def registrar_log_admin(acao, usuario_afetado_id=None, descricao=''):
@@ -103,6 +117,7 @@ def registrar_log_admin(acao, usuario_afetado_id=None, descricao=''):
         )
         db.session.add(log)
         db.session.commit()
+
 
 # ---------- Funções auxiliares para carregar JSON ----------
 def processar_json_m3u(filepath):
@@ -154,6 +169,7 @@ def processar_json_m3u(filepath):
             'sinopse_episodio': None,
             'ativo': True
         }
+
         if tipo == 'serie':
             match = re.search(r'S(\d+)E(\d+)', nome, re.IGNORECASE)
             if match:
@@ -167,16 +183,20 @@ def processar_json_m3u(filepath):
 
     return canais_para_inserir, None
 
+
 # ---------- Funções de filtro ----------
 def filtrar_adultos(query):
     return query.filter((Canal.categoria != 'Adultos') | (Canal.categoria.is_(None)))
+
 
 def filtrar_visiveis(query):
     """Filtra apenas conteúdos ativos (não ocultos)."""
     return query.filter(Canal.ativo == True)
 
+
 # ---------- Decoradores ----------
 def admin_required(f):
+    @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'usuario_id' not in session:
             return redirect(url_for('login'))
@@ -184,10 +204,11 @@ def admin_required(f):
         if not usuario or not usuario.is_admin:
             return redirect(url_for('index'))
         return f(*args, **kwargs)
-    decorated_function.__name__ = f.__name__
     return decorated_function
 
+
 def initial_admin_required(f):
+    @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'usuario_id' not in session:
             logger.warning("Tentativa de acesso sem autenticação")
@@ -203,26 +224,23 @@ def initial_admin_required(f):
             logger.warning(f"Usuário {usuario.email} não é o admin inicial")
             return jsonify({'erro': 'Acesso negado'}), 403
         return f(*args, **kwargs)
-    decorated_function.__name__ = f.__name__
     return decorated_function
+
 
 # ---------- Controle de sessão única ----------
 def gerar_token_sessao():
-    """Gera um token aleatório para a sessão."""
     return secrets.token_urlsafe(32)
 
+
 def get_bearer_token():
-    """Extrai o token Bearer do header Authorization."""
     auth_header = request.headers.get('Authorization', '')
     if not auth_header:
         return None
-
     parts = auth_header.split()
-
     if len(parts) == 2 and parts[0].lower() == 'bearer':
         return parts[1]
-
     return None
+
 
 def autenticar_por_bearer_token():
     """
@@ -238,24 +256,19 @@ def autenticar_por_bearer_token():
         return None
 
     usuario = Usuario.query.get(sessao.usuario_id)
-    if not usuario:
-        return None
-
-    if not usuario.ativo:
+    if not usuario or not usuario.ativo:
         return None
 
     if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
         return None
 
-    # Injeta na sessão Flask para o restante das rotas funcionar sem alterar tudo
     session['usuario_id'] = usuario.id
     session['token_sessao'] = token
     g.usuario_autenticado = usuario
-
     return usuario
 
+
 def is_api_request():
-    """Detecta se a requisição é de API/Android."""
     if request.is_json:
         return True
     if request.path.startswith('/api/'):
@@ -266,45 +279,84 @@ def is_api_request():
         return True
     return False
 
+
 def verificar_sessao_unica():
-    """Verifica se a sessão atual ainda é válida (web ou bearer token)."""
     usuario_id = session.get('usuario_id')
     token_sessao = session.get('token_sessao')
 
     if usuario_id and token_sessao:
         usuario = Usuario.query.get(usuario_id)
         if usuario and not usuario.is_admin:
-            sessao = SessaoAtiva.query.filter_by(
-                usuario_id=usuario.id,
-                token=token_sessao
-            ).first()
+            sessao = SessaoAtiva.query.filter_by(usuario_id=usuario.id, token=token_sessao).first()
             if not sessao:
                 session.clear()
                 return False
         return True
-
     return False
+
+
+# =============== AUTH MOBILE (Bearer obrigatório) ===============
+def mobile_auth_required(f):
+    """
+    Força Bearer token válido (SessaoAtiva) e usuário ativo.
+    Ideal para rotas /api/mobile/* e streaming.
+    """
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        token = get_bearer_token()
+        if not token:
+            return jsonify({'erro': 'Token não fornecido'}), 401
+
+        sessao = SessaoAtiva.query.filter_by(token=token).first()
+        if not sessao:
+            return jsonify({'erro': 'Token inválido'}), 401
+
+        usuario = Usuario.query.get(sessao.usuario_id)
+        if not usuario or not usuario.ativo:
+            return jsonify({'erro': 'Usuário inativo'}), 403
+
+        if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
+            return jsonify({'erro': 'Conta expirada'}), 403
+
+        g.usuario_mobile = usuario
+        g.token_mobile = token
+        return f(*args, **kwargs)
+    return wrapper
+
 
 @app.before_request
 def before_request():
     """Middleware para aceitar sessão web e Bearer token do Android."""
     rotas_publicas = [
+        # auth
         'login',
         'api_mobile_login',
         'api_mobile_logout',
+        'logout',
+
+        # web/aux
         'static',
         'proxy',
         'busca',
         'api_busca',
-        'logout',
+
+        # compat
         'api_conteudo_url',
-        'api_video_stream'      # Adiciona a nova rota de vídeo como pública (mas ela mesma fará autenticação)
+        'api_video_stream',
+
+        # novas rotas mobile (elas mesmas validam o bearer)
+        'api_mobile_filmes_lista',
+        'api_mobile_filme_detalhe',
+        'api_mobile_series_lista',
+        'api_mobile_serie_detalhe',
+        'api_mobile_serie_episodios',
+        'api_mobile_stream',
     ]
 
     if request.endpoint in rotas_publicas:
         return
 
-    # 1. Se já existe sessão Flask válida, segue normalmente
+    # 1) sessão web
     if 'usuario_id' in session:
         if not verificar_sessao_unica():
             if is_api_request():
@@ -312,7 +364,7 @@ def before_request():
             return redirect(url_for('login'))
         return
 
-    # 2. Tenta autenticar via Bearer token
+    # 2) bearer
     usuario = autenticar_por_bearer_token()
     if usuario:
         if not verificar_sessao_unica():
@@ -321,19 +373,20 @@ def before_request():
             return redirect(url_for('login'))
         return
 
-    # 3. Não autenticado
+    # 3) não autenticado
     if is_api_request():
         return jsonify({'erro': 'Não autenticado'}), 401
     return redirect(url_for('login'))
 
+
 # ---------- Context processor ----------
 @app.context_processor
 def inject_user_and_now():
-    from datetime import datetime
     if 'usuario_id' in session:
         usuario = Usuario.query.get(session['usuario_id'])
         return dict(usuario_atual=usuario, now=datetime.utcnow)
     return dict(usuario_atual=None, now=datetime.utcnow)
+
 
 # ---------- Rotas principais ----------
 @app.route('/')
@@ -344,6 +397,7 @@ def index():
     usuario.ultimo_acesso = datetime.utcnow()
     db.session.commit()
     return render_template('index.html')
+
 
 @app.route('/register', methods=['GET', 'POST'])
 @admin_required
@@ -382,6 +436,7 @@ def register():
         return redirect(url_for('admin'))
     return redirect(url_for('admin'))
 
+
 @app.route('/api/check-session')
 def check_session():
     """Verifica se o usuário atual tem uma sessão ativa."""
@@ -405,13 +460,11 @@ def check_session():
 
     return jsonify({'logged_in': False}), 401
 
+
 @app.route('/logout', methods=['GET', 'POST'])
 def logout():
     """Remove a sessão ativa do banco e limpa a sessão Flask."""
-    token = session.get('token_sessao')
-
-    if not token:
-        token = get_bearer_token()
+    token = session.get('token_sessao') or get_bearer_token()
 
     if token:
         SessaoAtiva.query.filter_by(token=token).delete()
@@ -423,6 +476,7 @@ def logout():
         return jsonify({'status': 'ok'})
 
     return redirect(url_for('login'))
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -453,15 +507,13 @@ def login():
                     return jsonify({'erro': 'Conta expirada. Contate o administrador.'}), 403
                 return render_template('login.html', erro='Conta expirada. Contate o administrador.')
 
-            # Remove sessões antigas de usuário comum
             if not usuario.is_admin:
                 SessaoAtiva.query.filter_by(usuario_id=usuario.id).delete()
                 db.session.commit()
 
             token = gerar_token_sessao()
-
-            sessao = SessaoAtiva(usuario_id=usuario.id, token=token)
-            db.session.add(sessao)
+            sessao_obj = SessaoAtiva(usuario_id=usuario.id, token=token)
+            db.session.add(sessao_obj)
             db.session.commit()
 
             session['usuario_id'] = usuario.id
@@ -490,6 +542,8 @@ def login():
 
     return render_template('login.html')
 
+
+# ========== AUTH MOBILE ==========
 @app.route('/api/mobile/login', methods=['POST'])
 def api_mobile_login():
     data = request.get_json(silent=True) or {}
@@ -511,7 +565,6 @@ def api_mobile_login():
     if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
         return jsonify({'erro': 'Conta expirada. Contate o administrador.'}), 403
 
-    # remove sessões antigas de usuários comuns
     if not usuario.is_admin:
         SessaoAtiva.query.filter_by(usuario_id=usuario.id).delete()
         db.session.commit()
@@ -522,7 +575,6 @@ def api_mobile_login():
     db.session.add(nova_sessao)
     db.session.commit()
 
-    # opcional: também popula sessão Flask
     session['usuario_id'] = usuario.id
     session['token_sessao'] = token
 
@@ -541,31 +593,280 @@ def api_mobile_login():
         }
     }), 200
 
+
 @app.route('/api/mobile/logout', methods=['POST'])
 def api_mobile_logout():
     token = get_bearer_token()
-
     if not token:
         return jsonify({'erro': 'Token não informado'}), 401
 
     SessaoAtiva.query.filter_by(token=token).delete()
     db.session.commit()
     session.clear()
-
     return jsonify({'status': 'ok'}), 200
 
-# ---------- Demais rotas ----------
+
+# ============================================================
+# ===================== ROTAS MOBILE =========================
+# ============================================================
+
+def mobile_stream_url(canal_id: int):
+    return url_for('api_mobile_stream', id=canal_id, _external=True)
+
+
+def serialize_filme_mobile(f: Canal):
+    return {
+        'id': f.id,
+        'tipo': 'filme',
+        'nome': f.nome,
+        'logo': f.logo,
+        'categoria': f.categoria,
+        'ano_lancamento': f.ano_lancamento,
+        'sinopse': f.sinopse_geral,
+        'url': mobile_stream_url(f.id)  # mantendo "url" para compatibilidade com seu app
+    }
+
+
+def serialize_serie_mobile_representante(c: Canal):
+    return {
+        'tipo': 'serie',
+        'serie_nome': c.serie_nome,
+        'nome': c.serie_nome,
+        'logo': c.logo,
+        'categoria': c.categoria,
+        'ano_lancamento': c.ano_lancamento,
+        'sinopse': c.sinopse_geral
+    }
+
+
+def serialize_episodio_mobile(ep: Canal, usuario_id: int):
+    progresso = Progresso.query.filter_by(usuario_id=usuario_id, canal_id=ep.id).first()
+    tempo_assistido = progresso.tempo if progresso else 0
+    duracao = progresso.duracao if progresso else 0
+    assistido = (duracao > 0 and tempo_assistido / duracao > 0.9) or (tempo_assistido > 0 and duracao == 0)
+
+    return {
+        'id': ep.id,
+        'tipo': 'serie',
+        'serie_nome': ep.serie_nome,
+        'temporada': ep.temporada,
+        'episodio': ep.episodio,
+        'nome': ep.nome,
+        'logo': ep.logo,
+        'sinopse_episodio': ep.sinopse_episodio,
+        'assistido': assistido,
+        'url': mobile_stream_url(ep.id)  # mantendo "url" para compatibilidade
+    }
+
+
+@app.route('/api/mobile/filmes', methods=['GET'])
+@mobile_auth_required
+def api_mobile_filmes_lista():
+    pagina = int(request.args.get('pagina', 1))
+    por_pagina = int(request.args.get('por_pagina', 20))
+    categoria = request.args.get('categoria')
+    ano = request.args.get('ano')
+    busca_txt = (request.args.get('busca') or '').strip()
+
+    query = Canal.query.filter(Canal.tipo == 'filme', Canal.ativo == True)
+    query = filtrar_adultos(query)
+
+    if categoria:
+        query = query.filter(Canal.categoria == categoria)
+    if ano:
+        query = query.filter(Canal.ano_lancamento == ano)
+    if busca_txt:
+        query = query.filter(Canal.nome.ilike(f'%{busca_txt}%'))
+
+    pag = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+
+    return jsonify({
+        'itens': [serialize_filme_mobile(f) for f in pag.items],
+        'total': pag.total,
+        'pagina': pagina,
+        'total_paginas': pag.pages
+    })
+
+
+@app.route('/api/mobile/filmes/<int:id>', methods=['GET'])
+@mobile_auth_required
+def api_mobile_filme_detalhe(id):
+    f = Canal.query.get_or_404(id)
+    if f.tipo != 'filme' or f.categoria == 'Adultos' or not f.ativo:
+        return jsonify({'erro': 'Conteúdo não disponível'}), 403
+
+    if not f.sinopse_geral:
+        dados_tmdb = buscar_filme_por_titulo(f.nome)
+        f.sinopse_geral = dados_tmdb.get('sinopse', 'Sinopse não encontrada')
+        if dados_tmdb.get('poster'):
+            f.logo = dados_tmdb.get('poster')
+        db.session.commit()
+
+    return jsonify(serialize_filme_mobile(f))
+
+
+@app.route('/api/mobile/series', methods=['GET'])
+@mobile_auth_required
+def api_mobile_series_lista():
+    pagina = int(request.args.get('pagina', 1))
+    por_pagina = int(request.args.get('por_pagina', 20))
+    categoria = request.args.get('categoria')
+    ano = request.args.get('ano')
+    busca_txt = (request.args.get('busca') or '').strip()
+
+    sub = db.session.query(
+        Canal.serie_nome,
+        func.min(Canal.id).label('id')
+    ).filter(
+        Canal.tipo == 'serie',
+        Canal.ativo == True,
+        Canal.categoria != 'Adultos'
+    )
+
+    if categoria:
+        sub = sub.filter(Canal.categoria == categoria)
+    if ano:
+        sub = sub.filter(Canal.ano_lancamento == ano)
+    if busca_txt:
+        sub = sub.filter(Canal.serie_nome.ilike(f'%{busca_txt}%'))
+
+    sub = sub.group_by(Canal.serie_nome).subquery()
+
+    query = db.session.query(Canal).join(sub, Canal.id == sub.c.id).order_by(Canal.serie_nome)
+    pag = query.paginate(page=pagina, per_page=por_pagina, error_out=False)
+
+    return jsonify({
+        'itens': [serialize_serie_mobile_representante(s) for s in pag.items],
+        'total': pag.total,
+        'pagina': pagina,
+        'total_paginas': pag.pages
+    })
+
+
+@app.route('/api/mobile/series/<string:serie_nome>', methods=['GET'])
+@mobile_auth_required
+def api_mobile_serie_detalhe(serie_nome):
+    ep = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).first()
+    if not ep or ep.categoria == 'Adultos' or not ep.ativo:
+        return jsonify({'erro': 'Série não disponível'}), 404
+
+    if not ep.sinopse_geral or not ep.tmdb_id:
+        dados = buscar_serie_por_titulo(serie_nome)
+        if dados.get('id'):
+            series_id = dados['id']
+            sinopse_geral = dados.get('sinopse', 'Sinopse não disponível')
+            poster = dados.get('poster')
+
+            episodios = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).all()
+            for e in episodios:
+                e.tmdb_id = series_id
+                e.sinopse_geral = sinopse_geral
+                if poster:
+                    e.logo = poster
+            db.session.commit()
+            ep = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).first()
+
+    return jsonify({
+        'tipo': 'serie',
+        'serie_nome': serie_nome,
+        'logo': ep.logo,
+        'categoria': ep.categoria,
+        'ano_lancamento': ep.ano_lancamento,
+        'sinopse': ep.sinopse_geral
+    })
+
+
+@app.route('/api/mobile/series/<string:serie_nome>/episodios', methods=['GET'])
+@mobile_auth_required
+def api_mobile_serie_episodios(serie_nome):
+    usuario_id = g.usuario_mobile.id
+
+    episodios = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome)\
+        .filter(Canal.ativo == True)\
+        .filter((Canal.categoria != 'Adultos') | (Canal.categoria.is_(None)))\
+        .order_by(Canal.temporada, Canal.episodio)\
+        .all()
+
+    if not episodios:
+        return jsonify({'erro': 'Série não encontrada'}), 404
+
+    # Lazy TMDB episode overview (opcional)
+    serie_tmdb_id = episodios[0].tmdb_id
+    atualizou = False
+    if serie_tmdb_id:
+        for e in episodios:
+            if not e.sinopse_episodio and e.temporada and e.episodio:
+                e.sinopse_episodio = buscar_episodio(serie_tmdb_id, e.temporada, e.episodio)
+                atualizou = True
+    if atualizou:
+        db.session.commit()
+
+    return jsonify([serialize_episodio_mobile(ep, usuario_id) for ep in episodios])
+
+
+@app.route('/api/mobile/stream/<int:id>', methods=['GET'])
+@mobile_auth_required
+def api_mobile_stream(id):
+    """
+    Streaming protegido com suporte a Range (melhor para ExoPlayer).
+    Espera Canal.url ser um PATH local no servidor.
+    """
+    canal = Canal.query.get_or_404(id)
+    if canal.categoria == 'Adultos' or not canal.ativo:
+        return jsonify({'erro': 'Conteúdo não disponível'}), 403
+
+    file_path = canal.url
+
+    if not file_path or not os.path.exists(file_path):
+        return jsonify({'erro': 'Arquivo não encontrado'}), 404
+
+    file_size = os.path.getsize(file_path)
+    range_header = request.headers.get('Range')
+
+    # Sem Range: manda normal (conditional=True ajuda caches)
+    if not range_header:
+        return send_file(file_path, mimetype='video/mp4', conditional=True)
+
+    # Parse Range: bytes=start-end
+    match = re.match(r'bytes=(\d+)-(\d*)', range_header)
+    if not match:
+        return send_file(file_path, mimetype='video/mp4', conditional=True)
+
+    start = int(match.group(1))
+    end_str = match.group(2)
+    end = int(end_str) if end_str else file_size - 1
+    end = min(end, file_size - 1)
+
+    if start > end or start >= file_size:
+        return jsonify({'erro': 'Range inválido'}), 416
+
+    length = end - start + 1
+
+    with open(file_path, 'rb') as f:
+        f.seek(start)
+        data = f.read(length)
+
+    rv = Response(data, 206, mimetype='video/mp4', direct_passthrough=True)
+    rv.headers.add('Content-Range', f'bytes {start}-{end}/{file_size}')
+    rv.headers.add('Accept-Ranges', 'bytes')
+    rv.headers.add('Content-Length', str(length))
+    return rv
+
+
+# ---------- Demais rotas (Web) ----------
 @app.route('/series')
 def series():
     if 'usuario_id' not in session:
         return redirect(url_for('login'))
     return render_template('series.html')
 
+
 @app.route('/filmes')
 def filmes():
     if 'usuario_id' not in session:
         return redirect(url_for('login'))
     return render_template('filmes.html')
+
 
 @app.route('/serie/<nome>')
 def serie_detalhe(nome):
@@ -623,6 +924,7 @@ def serie_detalhe(nome):
                            sinopse_geral=sinopse_geral,
                            poster_serie=poster_serie)
 
+
 @app.route('/filme/<int:id>')
 def filme_detalhe(id):
     if 'usuario_id' not in session:
@@ -643,6 +945,7 @@ def filme_detalhe(id):
         poster_tmdb = filme.logo
     return render_template('filme-detalhe.html', filme=filme, sinopse=sinopse, poster_tmdb=poster_tmdb)
 
+
 @app.route('/play/<int:id>')
 def play(id):
     if 'usuario_id' not in session:
@@ -661,6 +964,7 @@ def play(id):
             Canal.ativo == True
         ).order_by(Canal.temporada, Canal.episodio).first()
     return render_template('player.html', canal=canal, proximo_episodio=proximo)
+
 
 @app.route('/perfil', methods=['GET', 'POST'])
 def perfil():
@@ -705,6 +1009,7 @@ def perfil():
                            favoritos_series=favoritos_series,
                            horas_assistidas=horas_assistidas)
 
+
 @app.route('/favoritos')
 def favoritos():
     if 'usuario_id' not in session:
@@ -713,10 +1018,12 @@ def favoritos():
     favs = Favorito.query.filter_by(usuario_id=usuario_id).all()
     return render_template('favoritos.html', favoritos=favs)
 
+
 @app.route('/busca')
 def busca():
     termo = request.args.get('q', '')
     return render_template('resultados.html', termo=termo)
+
 
 # ---------- Área Admin ----------
 @app.route('/admin')
@@ -725,10 +1032,12 @@ def admin():
     erro = request.args.get('erro')
     return render_template('admin.html', erro_cadastro=erro)
 
+
 @app.route('/conteudos')
 @admin_required
 def conteudos():
     return render_template('conteudos.html')
+
 
 @app.route('/api/admin/estatisticas')
 @admin_required
@@ -746,15 +1055,16 @@ def api_admin_estatisticas():
         'total_admins': total_admins
     })
 
+
 @app.route('/api/admin/usuarios')
 @admin_required
 def api_admin_usuarios():
     pagina = int(request.args.get('pagina', 1))
-    busca = request.args.get('busca', '').strip()
+    busca_txt = request.args.get('busca', '').strip()
     por_pagina = 20
     query = Usuario.query
-    if busca:
-        query = query.filter(Usuario.nome.ilike(f'%{busca}%') | Usuario.email.ilike(f'%{busca}%'))
+    if busca_txt:
+        query = query.filter(Usuario.nome.ilike(f'%{busca_txt}%') | Usuario.email.ilike(f'%{busca_txt}%'))
     total = query.count()
     usuarios = query.order_by(Usuario.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
@@ -771,6 +1081,7 @@ def api_admin_usuarios():
         'total_paginas': usuarios.pages
     })
 
+
 @app.route('/api/admin/usuarios/<int:usuario_id>/banir', methods=['POST'])
 @admin_required
 def admin_banir_usuario(usuario_id):
@@ -782,6 +1093,7 @@ def admin_banir_usuario(usuario_id):
     registrar_log_admin('banimento', usuario_id, f'Novo status ativo: {usuario.ativo}')
     return jsonify({'status': 'ok', 'ativo': usuario.ativo})
 
+
 @app.route('/api/admin/usuarios/<int:usuario_id>/logout', methods=['POST'])
 @admin_required
 def admin_logout_usuario(usuario_id):
@@ -791,8 +1103,8 @@ def admin_logout_usuario(usuario_id):
         db.session.commit()
         registrar_log_admin('logout_forcado', usuario_id, f'Admin deslogou o usuário {usuario.nome}')
         return jsonify({'status': 'ok'})
-    else:
-        return jsonify({'erro': 'Administradores não podem ser deslogados remotamente'}), 400
+    return jsonify({'erro': 'Administradores não podem ser deslogados remotamente'}), 400
+
 
 @app.route('/api/admin/usuarios/<int:usuario_id>/excluir', methods=['DELETE'])
 @admin_required
@@ -805,6 +1117,7 @@ def admin_excluir_usuario(usuario_id):
     registrar_log_admin('exclusao', usuario_id)
     return jsonify({'status': 'ok'})
 
+
 @app.route('/api/admin/usuarios/<int:usuario_id>/resetar-senha', methods=['POST'])
 @admin_required
 def admin_resetar_senha(usuario_id):
@@ -815,11 +1128,12 @@ def admin_resetar_senha(usuario_id):
     registrar_log_admin('reset_senha', usuario_id)
     return jsonify({'status': 'ok', 'nova_senha': nova_senha})
 
+
 @app.route('/api/admin/usuarios/<int:usuario_id>', methods=['GET', 'POST'])
 @admin_required
 def admin_editar_usuario(usuario_id):
     usuario = Usuario.query.get_or_404(usuario_id)
-    
+
     if request.method == 'GET':
         return jsonify({
             'id': usuario.id,
@@ -829,8 +1143,8 @@ def admin_editar_usuario(usuario_id):
             'ativo': usuario.ativo,
             'expira_em': usuario.expira_em.strftime('%Y-%m-%d') if usuario.expira_em else None
         })
-    
-    data = request.get_json()
+
+    data = request.get_json(silent=True) or {}
     if not data:
         return jsonify({'erro': 'Dados não fornecidos'}), 400
 
@@ -838,23 +1152,24 @@ def admin_editar_usuario(usuario_id):
     usuario.email = data.get('email', usuario.email)
     usuario.is_admin = data.get('is_admin', usuario.is_admin)
     usuario.ativo = data.get('ativo', usuario.ativo)
-    
+
     dias = data.get('dias')
     if dias is not None:
         if dias > 0:
             usuario.expira_em = datetime.utcnow() + timedelta(days=dias)
         else:
             usuario.expira_em = None
-    
+
     db.session.commit()
-    
+
     registrar_log_admin(
         acao='edicao',
         usuario_afetado_id=usuario.id,
         descricao=f'Dias: {dias}, Admin: {usuario.is_admin}, Ativo: {usuario.ativo}'
     )
-    
+
     return jsonify({'status': 'ok'})
+
 
 @app.route('/api/admin/logs')
 @admin_required
@@ -875,6 +1190,7 @@ def api_admin_logs():
         'pagina': pagina,
         'total_paginas': logs.pages
     })
+
 
 # ---------- Rota para importar M3U (apenas admin inicial) ----------
 @app.route('/api/admin/importar-m3u', methods=['POST'])
@@ -900,6 +1216,7 @@ def importar_m3u():
         Canal.query.delete()
         db.session.bulk_insert_mappings(Canal, dados)
         db.session.commit()
+
         logger.info(f"Importação concluída: {len(dados)} itens inseridos.")
         registrar_log_admin('importacao_m3u', descricao=f'Importado arquivo {filename} com {len(dados)} itens')
         return jsonify({'status': 'ok', 'mensagem': f'{len(dados)} itens importados com sucesso.'})
@@ -907,16 +1224,17 @@ def importar_m3u():
         logger.exception("Erro na importação M3U")
         return jsonify({'erro': str(e)}), 500
 
+
 # ---------- API de gestão de conteúdos ----------
 @app.route('/api/admin/conteudos')
 @admin_required
 def api_admin_conteudos():
     pagina = int(request.args.get('pagina', 1))
-    busca = request.args.get('busca', '').strip()
+    busca_txt = request.args.get('busca', '').strip()
     por_pagina = 20
     query = Canal.query
-    if busca:
-        query = query.filter(Canal.nome.ilike(f'%{busca}%'))
+    if busca_txt:
+        query = query.filter(Canal.nome.ilike(f'%{busca_txt}%'))
     total = query.count()
     conteudos = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
@@ -940,6 +1258,7 @@ def api_admin_conteudos():
         'total_paginas': conteudos.pages
     })
 
+
 @app.route('/api/admin/conteudos/<int:id>')
 @admin_required
 def api_admin_conteudo(id):
@@ -960,6 +1279,7 @@ def api_admin_conteudo(id):
         'sinopse_episodio': canal.sinopse_episodio
     })
 
+
 @app.route('/api/admin/conteudos/<int:id>/toggle-ativo', methods=['POST'])
 @admin_required
 def admin_toggle_ativo(id):
@@ -968,6 +1288,7 @@ def admin_toggle_ativo(id):
     db.session.commit()
     registrar_log_admin('toggle_ativo', usuario_afetado_id=canal.id, descricao=f'Ativo agora: {canal.ativo}')
     return jsonify({'status': 'ok', 'ativo': canal.ativo})
+
 
 @app.route('/api/admin/conteudos/<int:id>', methods=['DELETE'])
 @admin_required
@@ -978,19 +1299,19 @@ def admin_delete_conteudo(id):
     registrar_log_admin('excluir_conteudo', usuario_afetado_id=id, descricao=f'Conteúdo excluído: {canal.nome}')
     return jsonify({'status': 'ok'})
 
+
 @app.route('/api/admin/conteudos/filme', methods=['POST'])
 @admin_required
 def admin_add_filme():
-    data = request.get_json()
-    if not data:
-        return jsonify({'erro': 'Dados não fornecidos'}), 400
+    data = request.get_json(silent=True) or {}
     nome = data.get('nome')
-    url = data.get('url')
-    if not nome or not url:
+    url_content = data.get('url')
+    if not nome or not url_content:
         return jsonify({'erro': 'Nome e URL são obrigatórios'}), 400
+
     canal = Canal(
         nome=nome,
-        url=url,
+        url=url_content,
         logo=data.get('logo', ''),
         categoria=data.get('categoria', ''),
         tipo='filme',
@@ -1008,13 +1329,14 @@ def admin_add_filme():
     registrar_log_admin('adicionar_filme', descricao=f'Filme adicionado: {nome}')
     return jsonify({'status': 'ok', 'id': canal.id})
 
+
 @app.route('/api/admin/conteudos/filme/<int:id>', methods=['PUT'])
 @admin_required
 def admin_edit_filme(id):
     canal = Canal.query.get_or_404(id)
     if canal.tipo != 'filme':
         return jsonify({'erro': 'Não é um filme'}), 400
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     canal.nome = data.get('nome', canal.nome)
     canal.url = data.get('url', canal.url)
     canal.logo = data.get('logo', canal.logo)
@@ -1025,16 +1347,17 @@ def admin_edit_filme(id):
     registrar_log_admin('editar_filme', usuario_afetado_id=canal.id, descricao=f'Filme editado: {canal.nome}')
     return jsonify({'status': 'ok'})
 
+
 @app.route('/api/admin/conteudos/serie/episodio', methods=['POST'])
 @admin_required
 def admin_add_episodio():
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     nome = data.get('nome')
     serie_nome = data.get('serie_nome')
     temporada = data.get('temporada')
     episodio = data.get('episodio')
-    url = data.get('url')
-    if not nome or not serie_nome or not temporada or not episodio or not url:
+    url_content = data.get('url')
+    if not nome or not serie_nome or not temporada or not episodio or not url_content:
         return jsonify({'erro': 'Nome, nome da série, temporada, episódio e URL são obrigatórios'}), 400
     existente = Canal.query.filter_by(serie_nome=serie_nome, temporada=temporada, episodio=episodio).first()
     if existente:
@@ -1044,7 +1367,7 @@ def admin_add_episodio():
         serie_nome=serie_nome,
         temporada=temporada,
         episodio=episodio,
-        url=url,
+        url=url_content,
         logo=data.get('logo', ''),
         categoria=data.get('categoria', ''),
         tipo='serie',
@@ -1057,13 +1380,14 @@ def admin_add_episodio():
     registrar_log_admin('adicionar_episodio', descricao=f'Episódio adicionado: {nome}')
     return jsonify({'status': 'ok', 'id': canal.id})
 
+
 @app.route('/api/admin/conteudos/serie/episodio/<int:id>', methods=['PUT'])
 @admin_required
 def admin_edit_episodio(id):
     canal = Canal.query.get_or_404(id)
     if canal.tipo != 'serie' or canal.temporada is None or canal.episodio is None:
         return jsonify({'erro': 'Não é um episódio'}), 400
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     canal.nome = data.get('nome', canal.nome)
     canal.url = data.get('url', canal.url)
     canal.logo = data.get('logo', canal.logo)
@@ -1082,11 +1406,11 @@ def admin_edit_episodio(id):
     registrar_log_admin('editar_episodio', usuario_afetado_id=canal.id, descricao=f'Episódio editado: {canal.nome}')
     return jsonify({'status': 'ok'})
 
+
 # ==================== ROTAS ADMINISTRATIVAS PARA SÉRIES ====================
 @app.route('/api/admin/serie/<string:serie_nome>', methods=['GET'])
 @admin_required
 def admin_get_serie(serie_nome):
-    """Retorna os dados comuns de uma série (logo, categoria, ano, sinopse geral)."""
     episodio = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).first()
     if not episodio:
         return jsonify({'erro': 'Série não encontrada'}), 404
@@ -1097,11 +1421,11 @@ def admin_get_serie(serie_nome):
         'sinopse_geral': episodio.sinopse_geral
     })
 
+
 @app.route('/api/admin/serie/<string:serie_nome>', methods=['PUT'])
 @admin_required
 def admin_update_serie(serie_nome):
-    """Atualiza os dados comuns de todos os episódios da série."""
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     if not data:
         return jsonify({'erro': 'Dados não fornecidos'}), 400
 
@@ -1123,25 +1447,25 @@ def admin_update_serie(serie_nome):
     registrar_log_admin('editar_serie', descricao=f'Série "{serie_nome}" atualizada')
     return jsonify({'status': 'ok'})
 
+
 @app.route('/api/admin/serie/<string:serie_nome>/toggle-ativo', methods=['POST'])
 @admin_required
 def admin_toggle_serie_ativo(serie_nome):
-    """Alterna o status ativo de todos os episódios da série."""
     episodios = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).all()
     if not episodios:
         return jsonify({'erro': 'Série não encontrada'}), 404
 
-    novo_status = not episodios[0].ativo if episodios else False
+    novo_status = not episodios[0].ativo
     for ep in episodios:
         ep.ativo = novo_status
     db.session.commit()
     registrar_log_admin('toggle_serie', descricao=f'Série "{serie_nome}" {"ativada" if novo_status else "desativada"}')
     return jsonify({'status': 'ok', 'ativo': novo_status})
 
+
 @app.route('/api/admin/serie/<string:serie_nome>/excluir', methods=['DELETE'])
 @admin_required
 def admin_delete_serie(serie_nome):
-    """Exclui todos os episódios da série."""
     episodios = Canal.query.filter_by(tipo='serie', serie_nome=serie_nome).all()
     if not episodios:
         return jsonify({'erro': 'Série não encontrada'}), 404
@@ -1152,7 +1476,8 @@ def admin_delete_serie(serie_nome):
     registrar_log_admin('excluir_serie', descricao=f'Série "{serie_nome}" excluída com {len(episodios)} episódios')
     return jsonify({'status': 'ok'})
 
-# ==================== NOVAS ROTAS PARA CATEGORIAS DESTAQUE ====================
+
+# ==================== CATEGORIAS DESTAQUE ====================
 @app.route('/api/admin/categorias-destaque/<tipo>', methods=['GET'])
 @admin_required
 def get_categorias_destaque(tipo):
@@ -1166,22 +1491,24 @@ def get_categorias_destaque(tipo):
         'disponiveis': categorias_disponiveis
     })
 
+
 @app.route('/api/admin/categorias-destaque/<tipo>', methods=['POST'])
 @admin_required
 def set_categorias_destaque(tipo):
     if tipo not in ['serie', 'filme']:
         return jsonify({'erro': 'Tipo inválido'}), 400
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     categorias = data.get('categorias', [])
     if len(categorias) > 5:
         return jsonify({'erro': 'Máximo de 5 categorias'}), 400
     CategoriaDestaque.query.filter_by(tipo=tipo).delete()
     for i, cat in enumerate(categorias):
-        cd = CategoriaDestaque(tipo=tipo, categoria=cat, posicao=i+1)
+        cd = CategoriaDestaque(tipo=tipo, categoria=cat, posicao=i + 1)
         db.session.add(cd)
     db.session.commit()
     registrar_log_admin('configurar_destaques', descricao=f'{tipo}: {categorias}')
     return jsonify({'status': 'ok'})
+
 
 @app.route('/api/series/categorias-destaque')
 def api_series_categorias_destaque():
@@ -1199,16 +1526,15 @@ def api_series_categorias_destaque():
             Canal.ativo == True,
             Canal.categoria != 'Adultos'
         ).group_by(Canal.serie_nome).limit(15).subquery()
-        
-        itens = db.session.query(Canal).join(
-            subquery, Canal.id == subquery.c.id
-        ).all()
-        
+
+        itens = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id).all()
+
         resultado.append({
             'titulo': d.categoria,
             'itens': [c.serialize() for c in itens]
         })
     return jsonify(resultado)
+
 
 @app.route('/api/filmes/categorias-destaque')
 def api_filmes_categorias_destaque():
@@ -1226,6 +1552,7 @@ def api_filmes_categorias_destaque():
         })
     return jsonify(resultado)
 
+
 # ========== API DE PERFIL ==========
 @app.route('/api/perfil', methods=['GET'])
 def api_perfil():
@@ -1241,18 +1568,20 @@ def api_perfil():
         'expira_em': usuario.expira_em.isoformat() if usuario.expira_em else None
     })
 
+
 @app.route('/api/perfil', methods=['PUT'])
 def api_atualizar_perfil():
     if 'usuario_id' not in session:
         return jsonify({'erro': 'Não autenticado'}), 401
     usuario = Usuario.query.get(session['usuario_id'])
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
     if 'nome' in data:
         usuario.nome = data['nome']
     if 'senha' in data:
         usuario.senha = generate_password_hash(data['senha'])
     db.session.commit()
     return jsonify({'status': 'ok'})
+
 
 # ========== DETALHES DE FILME ==========
 @app.route('/api/filme/<int:id>')
@@ -1272,6 +1601,7 @@ def api_filme_detalhe(id):
         'url': url_for('api_conteudo_url', id=filme.id, _external=True)
     })
 
+
 # ========== DETALHES DE SÉRIE ==========
 @app.route('/api/serie/<nome>')
 def api_serie_detalhe(nome):
@@ -1288,15 +1618,17 @@ def api_serie_detalhe(nome):
         'ano': episodio.ano_lancamento
     })
 
+
 # ---------- API pública ----------
 def get_random_items(tipo, limite=15, ano=None):
-    from sqlalchemy.sql.expression import func
+    from sqlalchemy.sql.expression import func as sqlfunc
     query = Canal.query.filter_by(tipo=tipo)
     if ano:
         query = query.filter_by(ano_lancamento=ano)
     query = filtrar_adultos(query)
     query = filtrar_visiveis(query)
-    return query.order_by(func.random()).limit(limite).all()
+    return query.order_by(sqlfunc.random()).limit(limite).all()
+
 
 def get_mais_assistidos_global(limite=5):
     progress_counts = db.session.query(
@@ -1317,27 +1649,20 @@ def get_mais_assistidos_global(limite=5):
     for canal, total in series_raw:
         chave = canal.serie_nome or canal.nome
         if chave not in series_map:
-            series_map[chave] = {
-                'total': 0,
-                'representante': canal
-            }
-
+            series_map[chave] = {'total': 0, 'representante': canal}
         series_map[chave]['total'] += total
 
         atual = series_map[chave]['representante']
         if (not atual.logo and canal.logo) or (canal.id < atual.id):
             series_map[chave]['representante'] = canal
 
-    series_list = [
-        (data['representante'], data['total'])
-        for data in series_map.values()
-    ]
+    series_list = [(data['representante'], data['total']) for data in series_map.values()]
     series_list.sort(key=lambda x: x[1], reverse=True)
 
     combined = [(canal, total) for canal, total in filmes] + series_list
     combined.sort(key=lambda x: x[1], reverse=True)
-
     return [c[0] for c in combined[:limite]]
+
 
 @app.route('/api/mais-assistidos')
 def api_mais_assistidos():
@@ -1345,6 +1670,7 @@ def api_mais_assistidos():
         return jsonify({'erro': 'Não autenticado'}), 401
     itens = get_mais_assistidos_global(5)
     return jsonify([c.serialize() for c in itens])
+
 
 def get_recentemente_assistidos(usuario_id, limite=15):
     subquery_series = db.session.query(
@@ -1378,6 +1704,7 @@ def get_recentemente_assistidos(usuario_id, limite=15):
     todos.sort(key=lambda p: p.data_atualizacao, reverse=True)
     return [p.canal for p in todos[:limite] if p.canal]
 
+
 @app.route('/api/inicio')
 def api_inicio():
     if 'usuario_id' not in session:
@@ -1392,6 +1719,7 @@ def api_inicio():
         'assistido_recentemente': recentes
     })
 
+
 @app.route('/api/filmes/categoria/<categoria>')
 def api_filmes_categoria(categoria):
     query = Canal.query.filter_by(tipo='filme', categoria=categoria)
@@ -1400,6 +1728,7 @@ def api_filmes_categoria(categoria):
     filmes = query.limit(15).all()
     return jsonify([f.serialize() for f in filmes])
 
+
 @app.route('/api/filmes/lancamento')
 def api_filmes_lancamento():
     query = Canal.query.filter_by(tipo='filme', ano_lancamento='2026')
@@ -1407,6 +1736,7 @@ def api_filmes_lancamento():
     query = filtrar_visiveis(query)
     filmes = query.order_by(Canal.id.desc()).limit(15).all()
     return jsonify([f.serialize() for f in filmes])
+
 
 @app.route('/api/filmes/lista')
 def api_filmes_lista():
@@ -1426,6 +1756,7 @@ def api_filmes_lista():
         'total_paginas': filmes.pages
     })
 
+
 @app.route('/api/series/categoria/<categoria>')
 def api_series_categoria(categoria):
     subquery = db.session.query(Canal.serie_nome, func.min(Canal.id).label('id')).filter(
@@ -1434,8 +1765,9 @@ def api_series_categoria(categoria):
     query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
     query = filtrar_adultos(query)
     query = filtrar_visiveis(query)
-    series = query.limit(15).all()
-    return jsonify([s.serialize() for s in series])
+    series_list = query.limit(15).all()
+    return jsonify([s.serialize() for s in series_list])
+
 
 @app.route('/api/series/lancamento')
 def api_series_lancamento():
@@ -1449,8 +1781,9 @@ def api_series_lancamento():
     query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
     query = filtrar_adultos(query)
     query = filtrar_visiveis(query)
-    series = query.order_by(Canal.id.desc()).limit(15).all()
-    return jsonify([s.serialize() for s in series])
+    series_list = query.order_by(Canal.id.desc()).limit(15).all()
+    return jsonify([s.serialize() for s in series_list])
+
 
 @app.route('/api/series/lista')
 def api_series_lista():
@@ -1467,26 +1800,34 @@ def api_series_lista():
     query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
     query = filtrar_adultos(query)
     query = filtrar_visiveis(query)
-    series = query.order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    series_pag = query.order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
-        'itens': [s.serialize() for s in series.items],
-        'total': series.total,
+        'itens': [s.serialize() for s in series_pag.items],
+        'total': series_pag.total,
         'pagina': pagina,
-        'total_paginas': series.pages
+        'total_paginas': series_pag.pages
     })
 
+
+# ====================== FIX IMPORTANTE AQUI ======================
+# Agora essa rota /api/serie/<nome>/episodios devolve URL de STREAM e não HTML
 @app.route('/api/serie/<nome>/episodios')
 def api_serie_episodios(nome):
     if 'usuario_id' not in session:
         return jsonify({'erro': 'Não autenticado'}), 401
+
     usuario_id = session['usuario_id']
-    episodios = Canal.query.filter_by(tipo='serie', serie_nome=nome).filter(Canal.ativo == True).order_by(Canal.temporada, Canal.episodio).all()
+    episodios = Canal.query.filter_by(tipo='serie', serie_nome=nome)\
+        .filter(Canal.ativo == True)\
+        .order_by(Canal.temporada, Canal.episodio).all()
+
     resultado = []
     for ep in episodios:
         progresso = Progresso.query.filter_by(usuario_id=usuario_id, canal_id=ep.id).first()
         tempo_assistido = progresso.tempo if progresso else 0
         duracao = progresso.duracao if progresso else 0
         assistido = (duracao > 0 and tempo_assistido / duracao > 0.9) or (tempo_assistido > 0 and duracao == 0)
+
         resultado.append({
             'id': ep.id,
             'temporada': ep.temporada,
@@ -1495,19 +1836,22 @@ def api_serie_episodios(nome):
             'logo': ep.logo,
             'sinopse_episodio': ep.sinopse_episodio,
             'assistido': assistido,
-            'url': url_for('play', id=ep.id)
+            'url': url_for('api_mobile_stream', id=ep.id, _external=True)  # <-- stream
         })
     return jsonify(resultado)
+
 
 @app.route('/api/filmes/categorias')
 def api_filmes_categorias():
     categorias = db.session.query(Canal.categoria).filter_by(tipo='filme').distinct().all()
     return jsonify([c[0] for c in categorias if c[0] and c[0] != 'Adultos'])
 
+
 @app.route('/api/series/categorias')
 def api_series_categorias():
     categorias = db.session.query(Canal.categoria).filter_by(tipo='serie').distinct().all()
     return jsonify([c[0] for c in categorias if c[0] and c[0] != 'Adultos'])
+
 
 @app.route('/api/filmes/anos')
 def api_filmes_anos():
@@ -1517,6 +1861,7 @@ def api_filmes_anos():
     ).distinct().order_by(Canal.ano_lancamento.desc()).all()
     return jsonify([a[0] for a in anos])
 
+
 @app.route('/api/series/anos')
 def api_series_anos():
     anos = db.session.query(Canal.ano_lancamento).filter(
@@ -1524,6 +1869,7 @@ def api_series_anos():
         Canal.ano_lancamento.isnot(None)
     ).distinct().order_by(Canal.ano_lancamento.desc()).all()
     return jsonify([a[0] for a in anos])
+
 
 @app.route('/api/filmes/categoria/<categoria>/lista')
 def api_filmes_categoria_lista(categoria):
@@ -1536,13 +1882,14 @@ def api_filmes_categoria_lista(categoria):
     query = filtrar_adultos(query)
     query = filtrar_visiveis(query)
     total = query.count()
-    filmes = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    filmes_pag = query.order_by(Canal.nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
-        'itens': [f.serialize() for f in filmes.items],
+        'itens': [f.serialize() for f in filmes_pag.items],
         'total': total,
         'pagina': pagina,
-        'total_paginas': filmes.pages
+        'total_paginas': filmes_pag.pages
     })
+
 
 @app.route('/api/series/categoria/<categoria>/lista')
 def api_series_categoria_lista(categoria):
@@ -1559,13 +1906,14 @@ def api_series_categoria_lista(categoria):
     query = db.session.query(Canal).join(subquery, Canal.id == subquery.c.id)
     query = filtrar_adultos(query)
     query = filtrar_visiveis(query)
-    series = query.order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
+    series_pag = query.order_by(Canal.serie_nome).paginate(page=pagina, per_page=por_pagina, error_out=False)
     return jsonify({
-        'itens': [s.serialize() for s in series.items],
-        'total': series.total,
+        'itens': [s.serialize() for s in series_pag.items],
+        'total': series_pag.total,
         'pagina': pagina,
-        'total_paginas': series.pages
+        'total_paginas': series_pag.pages
     })
+
 
 @app.route('/api/busca')
 def api_busca():
@@ -1585,9 +1933,7 @@ def api_busca():
         Canal.ativo == True
     ).group_by(Canal.serie_nome).subquery()
 
-    series = db.session.query(Canal).join(
-        subquery_series, Canal.id == subquery_series.c.id
-    ).all()
+    series_list = db.session.query(Canal).join(subquery_series, Canal.id == subquery_series.c.id).all()
 
     outros = Canal.query.filter(
         Canal.tipo.in_(['filme', 'tv', 'radio']),
@@ -1596,7 +1942,7 @@ def api_busca():
         Canal.ativo == True
     ).all()
 
-    resultados = series + outros
+    resultados = series_list + outros
     resultados.sort(key=lambda x: x.nome)
 
     total = len(resultados)
@@ -1611,6 +1957,7 @@ def api_busca():
         'total_paginas': (total + por_pagina - 1) // por_pagina
     })
 
+
 def serialize_canal(canal):
     return {
         'id': canal.id,
@@ -1624,41 +1971,47 @@ def serialize_canal(canal):
         'serie_nome': canal.serie_nome,
         'ano_lancamento': canal.ano_lancamento
     }
+
+
 Canal.serialize = serialize_canal
 
+
+# =================== URL CONTEUDO (AGORA RETORNA STREAM) ===================
 @app.route('/api/conteudo/<int:id>/url')
 def api_conteudo_url(id):
-    """Retorna a URL de um conteúdo (filme ou episódio) pelo ID."""
     canal = Canal.query.get(id)
     if not canal:
         return jsonify({'erro': 'Conteúdo não encontrado'}), 404
-    
+
     if 'usuario_id' not in session:
         return jsonify({'erro': 'Não autenticado'}), 401
-    
+
     usuario = Usuario.query.get(session['usuario_id'])
     if not usuario:
         return jsonify({'erro': 'Usuário inválido'}), 401
-    
+
     if not usuario.is_admin and usuario.expira_em and usuario.expira_em < datetime.utcnow():
         return jsonify({'erro': 'Conta expirada'}), 403
-    
+
     if canal.categoria == 'Adultos' or not canal.ativo:
         return jsonify({'erro': 'Conteúdo não disponível'}), 403
-    
+
+    # IMPORTANTÍSSIMO: para mobile tocar, devolva URL de stream, não canal.url local
     return jsonify({
         'id': canal.id,
-        'url': canal.url,
+        'url': url_for('api_mobile_stream', id=canal.id, _external=True),
         'tipo': canal.tipo,
         'nome': canal.nome
     })
 
-# ---------- Rota de streaming para aplicativo móvel (vídeo) ----------
+
+# ---------- Rota antiga de streaming (compat) ----------
 @app.route('/api/video/<int:id>')
 def api_video_stream(id):
-    from flask import send_file, jsonify, abort
-    import os
-
+    """
+    Mantida por compatibilidade, mas sem Range.
+    Recomendo o app usar /api/mobile/stream/<id>.
+    """
     token = get_bearer_token()
     if not token:
         return jsonify({'erro': 'Token não fornecido'}), 401
@@ -1679,10 +2032,11 @@ def api_video_stream(id):
         abort(403)
 
     file_path = canal.url
-    if not os.path.exists(file_path):
+    if not file_path or not os.path.exists(file_path):
         return jsonify({'erro': 'Arquivo não encontrado'}), 404
 
-    return send_file(file_path, mimetype='video/mp4')
+    return send_file(file_path, mimetype='video/mp4', conditional=True)
+
 
 # ---------- Favoritos ----------
 @app.route('/favoritar/<int:canal_id>', methods=['POST'])
@@ -1697,34 +2051,27 @@ def favoritar(canal_id):
         return jsonify({'erro': 'Conteúdo não disponível'}), 403
 
     if canal.tipo == 'serie':
-        representante = Canal.query.filter_by(
-            tipo='serie',
-            serie_nome=canal.serie_nome
-        ).order_by(Canal.id).first()
+        representante = Canal.query.filter_by(tipo='serie', serie_nome=canal.serie_nome).order_by(Canal.id).first()
         if not representante:
             return jsonify({'erro': 'Série não encontrada'}), 404
         canal_id = representante.id
 
-    existe = Favorito.query.filter_by(
-        usuario_id=usuario_id,
-        canal_id=canal_id
-    ).first()
+    existe = Favorito.query.filter_by(usuario_id=usuario_id, canal_id=canal_id).first()
 
     if existe:
         db.session.delete(existe)
         db.session.commit()
-        registrar_log_admin('remover_favorito', usuario_afetado_id=canal_id, descricao=f'Removeu favorito do canal {canal_id}')
+        registrar_log_admin('remover_favorito', usuario_afetado_id=canal_id,
+                           descricao=f'Removeu favorito do canal {canal_id}')
         return jsonify({'status': 'removido'})
     else:
-        novo_favorito = Favorito(
-            usuario_id=usuario_id,
-            canal_id=canal_id,
-            tipo=canal.tipo
-        )
+        novo_favorito = Favorito(usuario_id=usuario_id, canal_id=canal_id, tipo=canal.tipo)
         db.session.add(novo_favorito)
         db.session.commit()
-        registrar_log_admin('adicionar_favorito', usuario_afetado_id=canal_id, descricao=f'Adicionou favorito do canal {canal_id}')
+        registrar_log_admin('adicionar_favorito', usuario_afetado_id=canal_id,
+                           descricao=f'Adicionou favorito do canal {canal_id}')
         return jsonify({'status': 'adicionado'})
+
 
 @app.route('/api/favoritos')
 def api_favoritos():
@@ -1733,23 +2080,24 @@ def api_favoritos():
     usuario_id = session['usuario_id']
     favs = Favorito.query.filter_by(usuario_id=usuario_id).all()
 
-    filmes = []
+    filmes_list = []
     series_map = {}
 
     for fav in favs:
         if not fav.canal or fav.canal.categoria == 'Adultos' or not fav.canal.ativo:
             continue
         if fav.canal.tipo == 'filme':
-            filmes.append(fav.canal)
+            filmes_list.append(fav.canal)
         elif fav.canal.tipo == 'serie' and fav.canal.serie_nome:
             if fav.canal.serie_nome not in series_map:
                 series_map[fav.canal.serie_nome] = fav.canal
 
-    series = list(series_map.values())
-    resultados = filmes + series
+    series_list = list(series_map.values())
+    resultados = filmes_list + series_list
     resultados.sort(key=lambda x: x.nome)
 
     return jsonify([c.serialize() for c in resultados])
+
 
 # ---------- Progresso ----------
 @app.route('/progresso/<int:canal_id>', methods=['POST'])
@@ -1759,10 +2107,12 @@ def salvar_progresso(canal_id):
     canal = Canal.query.get(canal_id)
     if canal and (canal.categoria == 'Adultos' or not canal.ativo):
         return jsonify({'erro': 'Conteúdo não disponível'}), 403
-    data = request.get_json()
+
+    data = request.get_json(silent=True) or {}
     tempo = data.get('tempo')
     duracao = data.get('duracao')
     usuario_id = session['usuario_id']
+
     progresso = Progresso.query.filter_by(usuario_id=usuario_id, canal_id=canal_id).first()
     if progresso:
         progresso.tempo = tempo
@@ -1774,6 +2124,7 @@ def salvar_progresso(canal_id):
     db.session.commit()
     return jsonify({'status': 'ok'})
 
+
 @app.route('/progresso/<int:canal_id>', methods=['GET'])
 def obter_progresso(canal_id):
     if 'usuario_id' not in session:
@@ -1783,6 +2134,7 @@ def obter_progresso(canal_id):
     if progresso:
         return jsonify({'tempo': progresso.tempo, 'duracao': progresso.duracao})
     return jsonify({'tempo': 0, 'duracao': 0})
+
 
 # ---------- Proxy ----------
 @app.route('/proxy')
@@ -1830,6 +2182,7 @@ def proxy():
     except Exception as e:
         return f'Erro no proxy: {str(e)}', 500
 
+
 # ---------- Criar admin padrão ----------
 def criar_admin_padrao():
     if Usuario.query.filter_by(email='empire@empirecine.com').first() is None:
@@ -1847,6 +2200,7 @@ def criar_admin_padrao():
     else:
         logger.info("Usuário admin padrão já existe.")
 
+
 if __name__ == '__main__':
     with app.app_context():
         from sqlalchemy import inspect
@@ -1863,4 +2217,5 @@ if __name__ == '__main__':
 
         criar_admin_padrao()
         logger.info("Sistema iniciado. Admin padrão pode importar o arquivo M3U.")
+
     app.run(debug=True, host='0.0.0.0', port=5000)
