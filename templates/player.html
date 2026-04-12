@@ -120,7 +120,10 @@
         <div class="title-section">
             {% if canal.tipo == 'serie' %}
                 <div class="serie-title">
-                    <h1>{{ canal.serie_nome }}</h1>
+                    <!-- ALTERAÇÃO: Título da série agora é um link para a página de detalhes da série -->
+                    <a href="{{ url_for('serie_detalhe', nome=canal.serie_nome) }}" class="serie-title-link">
+                        <h1>{{ canal.serie_nome }}</h1>
+                    </a>
                     <h2 class="episode-subtitle">Episódio {{ canal.episodio }}</h2>
                 </div>
             {% else %}
@@ -822,6 +825,17 @@
 
 .episode-sidebar-toggle:hover {
     background: #f40612;
+}
+
+/* ===== ESTILO DO LINK DO TÍTULO DA SÉRIE ===== */
+.serie-title-link {
+    text-decoration: none;
+    color: inherit;
+    display: inline-block;
+}
+.serie-title-link:hover {
+    text-decoration: underline;
+    opacity: 0.9;
 }
 
 /* Responsividade */
