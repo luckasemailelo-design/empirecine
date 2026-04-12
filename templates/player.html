@@ -1650,17 +1650,20 @@
                                 </div>
                                 <div class="episodios-list ${expandida}">
                         `;
+                        // Dentro da função carregarEpisodios(), no loop de episódios:
                         epis.forEach(ep => {
                             const assistidoClass = ep.assistido ? 'assistido' : '';
                             const currentClass = (ep.id == canalId) ? ' current-episode' : '';
+                            // Construir URL da página do player usando o ID
+                            const playerUrl = "/play/" + ep.id;
                             html += `
-                                <div class="episodio-item ${assistidoClass}${currentClass}" data-id="${ep.id}" data-url="${ep.url}">
+                                <div class="episodio-item ${assistidoClass}${currentClass}" data-id="${ep.id}" data-url="${playerUrl}">
                                     <img src="${ep.logo || '/static/images/placeholder.png'}" alt="">
                                     <div class="episodio-info">
-                                        <h5>${ep.episodio} - Episódio</h5>
+                                        <h5>Episódio ${ep.episodio}</h5>
                                         <p>${ep.sinopse_episodio || ''}</p>
                                     </div>
-                                    <a href="${ep.url}" class="btn-small" onclick="event.stopPropagation();">Assistir</a>
+                                    <a href="${playerUrl}" class="btn-small" onclick="event.stopPropagation();">Assistir</a>
                                 </div>
                             `;
                         });
